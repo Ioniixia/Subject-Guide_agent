@@ -28,10 +28,10 @@ if submit_btn:
         # Toggle logic between placeholder context and real retriever module
         if use_real_faiss:
             try:
-                from retriever import get_relevant_chunks
-                retrieved_chunks = get_relevant_chunks(query, k=4)
-            except ImportError:
-                st.error("Retriever module not found. Falling back to placeholders.")
+                from src.test_retrieval import search_index
+                retrieved_chunks = search_index(query, k=4)
+            except Exception as e:
+                st.error(f"Retriever failed: {type(e).__name__}: {e}")
                 retrieved_chunks = PLACEHOLDER_CHUNKS
         else:
             retrieved_chunks = PLACEHOLDER_CHUNKS
