@@ -4,3 +4,8 @@ langchain-community
 sentence-transformers
 faiss-cpu
 python-dotenv
+streamlit
+google-genai
+
+docx2txt
+python-pptx
