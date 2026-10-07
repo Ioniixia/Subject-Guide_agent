@@ -6,14 +6,15 @@ def search_index(question, k=3, index_path="faiss_index"):
     vectorstore = FAISS.load_local(index_path, embeddings, allow_dangerous_deserialization=True)
 
     results = vectorstore.similarity_search(question, k=k)
-    return [doc.page_content for doc in results]
+    return results  # return full Document objects now, not just text
 
 if __name__ == "__main__":
     question = "What is the difference between 2NF and 3NF?"
     results = search_index(question)
 
     print(f"Question: {question}\n")
-    for i, chunk in enumerate(results):
+    for i, doc in enumerate(results):
         print(f"--- Result {i+1} ---")
-        print(chunk)
+        print(f"Source: {doc.metadata.get('source_file')} ({doc.metadata.get('source_type')})")
+        print(doc.page_content)
         print()
