@@ -20,5 +20,11 @@ if __name__ == "__main__":
             "subject": "DBMS",
             "chapter": "Normalization",
         },
+        {
+            "path": "data/dbms_sample_transactions.docx",
+            "source_type": "notes",
+            "subject": "DBMS",
+            "chapter": "Transactions",
+        },
     ]
     build_index(file_configs)

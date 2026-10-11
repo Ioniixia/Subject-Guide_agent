@@ -16,16 +16,15 @@ def search_index(question, k=3, index_path="faiss_index", subject=None, chapter=
     return results
 
 if __name__ == "__main__":
-    question = "What is the difference between 2NF and 3NF?"
+    def show(title, results):
+        print(f"\n=== {title} ===")
+        for doc in results:
+            print(f"- {doc.metadata.get('source_file')} | {doc.metadata.get('chapter')}")
 
-    print("=== No filter ===")
-    for doc in search_index(question):
-        print(f"- {doc.metadata.get('source_file')} | {doc.metadata.get('subject')} | {doc.metadata.get('chapter')}")
+    q1 = "What are the ACID properties?"
+    show("ACID question, no filter", search_index(q1))
+    show("ACID question, chapter = Normalization", search_index(q1, chapter="Normalization"))
 
-    print("\n=== Filter: chapter = Normalization ===")
-    for doc in search_index(question, chapter="Normalization"):
-        print(f"- {doc.metadata.get('source_file')} | {doc.metadata.get('subject')} | {doc.metadata.get('chapter')}")
-
-    print("\n=== Filter: chapter = Transactions (should return nothing) ===")
-    results = search_index(question, chapter="Transactions")
-    print(f"Results found: {len(results)}")
+    q2 = "What is the difference between 2NF and 3NF?"
+    show("2NF question, no filter", search_index(q2))
+    show("2NF question, chapter = Transactions", search_index(q2, chapter="Transactions"))
