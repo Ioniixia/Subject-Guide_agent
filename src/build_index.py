@@ -15,16 +15,22 @@ def build_index(file_configs, save_path="faiss_index"):
 if __name__ == "__main__":
     file_configs = [
         {
-            "path": "data/dbms_sample_notes.pdf",
+            "path": "data/unit1_intro_ai.pptx",
             "source_type": "notes",
-            "subject": "DBMS",
-            "chapter": "Normalization",
+            "subject": "AIML",
+            "chapter": "Unit 1 - Introduction to AI",
         },
         {
-            "path": "data/dbms_sample_transactions.docx",
+            "path": "data/unit2_ai_frameworks.pptx",
             "source_type": "notes",
-            "subject": "DBMS",
-            "chapter": "Transactions",
+            "subject": "AIML",
+            "chapter": "Unit 2 - AI Technologies and Frameworks",
+        },
+        {
+            "path": "data/unit3_ml_basics.pptx",
+            "source_type": "notes",
+            "subject": "AIML",
+            "chapter": "Unit 3 - Machine Learning Basics",
         },
     ]
     build_index(file_configs)

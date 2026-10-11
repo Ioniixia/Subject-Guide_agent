@@ -19,12 +19,18 @@ if __name__ == "__main__":
     def show(title, results):
         print(f"\n=== {title} ===")
         for doc in results:
-            print(f"- {doc.metadata.get('source_file')} | {doc.metadata.get('chapter')}")
+            slide = doc.metadata.get("slide")
+            print(f"- {doc.metadata.get('chapter')} | slide {slide}")
+            print(f"    {doc.page_content[:90].replace(chr(10), ' ')}...")
 
-    q1 = "What are the ACID properties?"
-    show("ACID question, no filter", search_index(q1))
-    show("ACID question, chapter = Normalization", search_index(q1, chapter="Normalization"))
+    show("What is supervised learning?",
+         search_index("What is supervised learning?"))
 
-    q2 = "What is the difference between 2NF and 3NF?"
-    show("2NF question, no filter", search_index(q2))
-    show("2NF question, chapter = Transactions", search_index(q2, chapter="Transactions"))
+    show("What is TensorFlow used for?",
+         search_index("What is TensorFlow used for?"))
+
+    show("What is a decision tree?",
+         search_index("What is a decision tree?"))
+
+    show("Same question, filtered to Unit 1 only",
+         search_index("What is a decision tree?", chapter="Unit 1 - Introduction to AI"))
