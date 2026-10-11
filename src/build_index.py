@@ -14,6 +14,11 @@ def build_index(file_configs, save_path="faiss_index"):
 
 if __name__ == "__main__":
     file_configs = [
-        {"path": "data/dbms_sample_notes.pdf", "source_type": "notes"},
+        {
+            "path": "data/dbms_sample_notes.pdf",
+            "source_type": "notes",
+            "subject": "DBMS",
+            "chapter": "Normalization",
+        },
     ]
     build_index(file_configs)
