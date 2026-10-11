@@ -5,6 +5,7 @@ import time
 from google.genai import types
 
 from llm import MODELS_TO_TRY, client
+from prompts import MARKS_GUIDE, MODES, PRACTICE_ANSWERS_INSTRUCTIONS
 
 
 def describe_source(doc) -> str:
@@ -12,6 +13,8 @@ def describe_source(doc) -> str:
     name = meta.get("source", "unknown source")
     name = str(name).replace("\\", "/").split("/")[-1]
     label = f"{name} ({meta['source_type']})" if meta.get("source_type") else name
+    if meta.get("chapter"):
+        label += f", chapter: {meta['chapter']}"
     if meta.get("slide") is not None:
         label += f", slide {meta['slide']}"
     elif isinstance(meta.get("page"), int):
@@ -19,35 +22,32 @@ def describe_source(doc) -> str:
     return label
 
 
-def build_prompt(question: str, docs) -> str:
-    if docs:
-        context = "\n\n---\n\n".join(
-            f"[{i}] Source: {describe_source(d)}\n{d.page_content}" for i, d in enumerate(docs, 1)
-        )
-    else:
-        context = "No context provided."
+def _format_context(docs) -> str:
+    if not docs:
+        return "No context provided."
+    return "\n\n---\n\n".join(
+        f"[{i}] Source: {describe_source(d)}\n{d.page_content}" for i, d in enumerate(docs, 1)
+    )
+
+
+def build_prompt(question: str, docs, mode: str = "qa", marks: str | None = None) -> str:
+    instructions = MODES[mode]["instructions"]
+    if mode == "solve" and marks in MARKS_GUIDE:
+        instructions += "\n" + MARKS_GUIDE[marks] + "\n"
+    label = {"qa": "Student Question", "solve": "Problem to Solve", "learn": "Topic to Teach"}[mode]
     return f"""
 You are an expert AI Academic Assistant & Subject Guide.
-Answer the student's question using ONLY the numbered reference materials below.
-Cite the sources you use inline like [1] or [2]. If the materials do not cover something, say so.
-
+{instructions}
 ### Reference Materials:
-{context}
+{_format_context(docs)}
 
-### Student Question:
+### {label}:
 {question}
-
-### Formatting Guidelines:
-- Use short headings and bullet points.
-- Keep the answer under 300 words.
-- Include one short example only if it helps.
 """
 
 
-def generate_answer(question: str, docs):
-    """Yield the answer piece by piece (use with st.write_stream)."""
-    prompt = build_prompt(question, docs)
-    config = types.GenerateContentConfig(temperature=0.3, max_output_tokens=1000)
+def _stream(prompt: str, max_tokens: int):
+    config = types.GenerateContentConfig(temperature=0.3, max_output_tokens=max_tokens)
     last_error = None
 
     for model_name in MODELS_TO_TRY:
@@ -71,3 +71,25 @@ def generate_answer(question: str, docs):
                 break
 
     raise Exception(f"All Gemini models failed. Last error: {last_error}")
+
+
+def generate_answer(question: str, docs, mode: str = "qa", marks: str | None = None):
+    """Yield the answer piece by piece (use with st.write_stream)."""
+    return _stream(build_prompt(question, docs, mode, marks), MODES[mode]["max_tokens"])
+
+
+def generate_practice_answers(topic: str, docs, lesson_text: str):
+    """Yield answers to the practice questions at the end of a lesson."""
+    prompt = f"""
+You are an expert AI Academic Assistant & Subject Guide.
+{PRACTICE_ANSWERS_INSTRUCTIONS}
+### Reference Materials:
+{_format_context(docs)}
+
+### Topic:
+{topic}
+
+### Lesson:
+{lesson_text}
+"""
+    return _stream(prompt, 1000)
