@@ -25,8 +25,8 @@ def _load_pptx(path: str) -> list[Document]:
     return docs
 
 
-def load_file(file_name: str, file_bytes: bytes, source_type: str) -> list[Document]:
-    """Read one uploaded file and tag every piece with its file name and type."""
+def load_file(file_name: str, file_bytes: bytes, source_type: str, subject: str = "", chapter: str = "") -> list[Document]:
+    """Read one uploaded file and tag every piece with its file name, type, subject and chapter."""
     extension = file_name.rsplit(".", 1)[-1].lower()
     if extension not in SUPPORTED_EXTENSIONS:
         raise ValueError(f"Unsupported file type: .{extension}")
@@ -48,15 +48,23 @@ def load_file(file_name: str, file_bytes: bytes, source_type: str) -> list[Docum
     for doc in docs:
         doc.metadata["source"] = file_name
         doc.metadata["source_type"] = source_type
+        if subject.strip():
+            doc.metadata["subject"] = subject.strip()
+        if chapter.strip():
+            doc.metadata["chapter"] = chapter.strip()
     return docs
 
 
 def build_session_index(files, embeddings):
-    """files = list of (file_name, file_bytes, source_type). Returns (FAISS index, chunk count)."""
+    """files = list of (file_name, file_bytes, source_type) or
+    (file_name, file_bytes, source_type, subject, chapter). Returns (FAISS index, chunk count)."""
     splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
     chunks = []
-    for file_name, file_bytes, source_type in files:
-        chunks.extend(splitter.split_documents(load_file(file_name, file_bytes, source_type)))
+    for file_name, file_bytes, source_type, *tags in files:
+        subject = tags[0] if len(tags) > 0 else ""
+        chapter = tags[1] if len(tags) > 1 else ""
+        docs = load_file(file_name, file_bytes, source_type, subject, chapter)
+        chunks.extend(splitter.split_documents(docs))
     if not chunks:
         raise ValueError("No readable text found in the uploaded files.")
     return FAISS.from_documents(chunks, embeddings), len(chunks)
