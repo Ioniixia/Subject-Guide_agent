@@ -2,7 +2,7 @@
 
 An AI study assistant for students. It reads your course notes (PDF, DOCX, PPTX), then explains topics, answers questions, and solves problems using only that material, with the source of every answer cited.
 
-**Live demo:** YOUR-APP-LINK
+**Live demo:** https://subject-guideagent-nvmsyd5d2gmqcemdjpjhgz.streamlit.app/
 
 ## Features
 - **Three study modes**
