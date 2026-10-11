@@ -9,3 +9,4 @@ langchain-core
 langchain-text-splitters
 sentence-transformers
 faiss-cpu
+torchvision
