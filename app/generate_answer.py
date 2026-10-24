@@ -10,6 +10,11 @@ from llm import MODELS_TO_TRY, client
 from prompts import MARKS_GUIDE, MODES, PRACTICE_ANSWERS_INSTRUCTIONS, QUIZ_INSTRUCTIONS
 
 
+def _digits(value) -> str:
+    """'Q3', 3 and '3' all become '3'."""
+    return re.sub(r"\D", "", str(value)) if value is not None else ""
+
+
 def describe_source(doc) -> str:
     meta = doc.metadata or {}
     name = meta.get("source", "unknown source")
@@ -17,9 +22,22 @@ def describe_source(doc) -> str:
     label = f"{name} ({meta['source_type']})" if meta.get("source_type") else name
     if meta.get("chapter"):
         label += f", chapter: {meta['chapter']}"
+
+    question_no = _digits(meta.get("question_no"))
+    if meta.get("source_type") == "question_paper" or question_no:
+        parts = []
+        if meta.get("year"):
+            parts.append(str(meta["year"]))
+        if question_no:
+            parts.append(f"Q{question_no}")
+        if _digits(meta.get("marks")):
+            parts.append(f"{_digits(meta['marks'])} marks")
+        if parts:
+            label += ", " + ", ".join(parts)
+
     if meta.get("slide") is not None:
         label += f", slide {meta['slide']}"
-    elif isinstance(meta.get("page"), int):
+    elif isinstance(meta.get("page"), int) and not question_no:
         label += f", page {meta['page'] + 1}"  # PDF pages are counted from 0
     return label
 
@@ -34,8 +52,11 @@ def _format_context(docs) -> str:
 
 def build_prompt(question: str, docs, mode: str = "qa", marks: str | None = None) -> str:
     instructions = MODES[mode]["instructions"]
-    if mode == "solve" and marks in MARKS_GUIDE:
-        instructions += "\n" + MARKS_GUIDE[marks] + "\n"
+    if mode == "solve" and marks:
+        if marks in MARKS_GUIDE:
+            instructions += "\n" + MARKS_GUIDE[marks] + "\n"
+        elif marks.isdigit():
+            instructions += f"\nThe problem is worth {marks} marks: size the answer to match.\n"
     label = {"qa": "Student Question", "solve": "Problem to Solve", "learn": "Topic to Teach"}[mode]
     return f"""
 You are an expert AI Academic Assistant & Subject Guide.

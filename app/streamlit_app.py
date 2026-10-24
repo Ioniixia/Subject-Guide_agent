@@ -1,4 +1,5 @@
 import os
+import re
 import time
 
 import streamlit as st
@@ -29,6 +30,9 @@ def load_builtin_index():
     return FAISS.load_local("faiss_index", get_embeddings(), allow_dangerous_deserialization=True)
 
 
+ALL_UNITS = "All Units"
+
+
 def collect_tags(stores):
     """Return the set of (subject, chapter, source_type) found in the chunks of the given indexes."""
     found = set()
@@ -45,6 +49,8 @@ def make_filter(wanted: dict):
     def matches(meta):
         for key, want in wanted.items():
             have = meta.get(key)
+            if key == "chapter" and have == ALL_UNITS:
+                continue  # question papers cover every unit, so they match any chapter
             if isinstance(want, (list, set, tuple)):
                 if have not in want:
                     return False
@@ -75,7 +81,11 @@ def retrieve(question, k, tag_filter, types, all_types, per_type):
         share = max(1, round(k / len(types)))
         results = []
         for source_type in types:
-            results.extend(search_docs(question, share, tag_filter, [source_type])[:share])
+            flt = tag_filter
+            if source_type == "question_paper":
+                # past papers are tagged with the chapter "All Units", so a chapter filter would hide them
+                flt = {key: value for key, value in tag_filter.items() if key != "chapter"}
+            results.extend(search_docs(question, share, flt, [source_type])[:share])
     else:
         subset = types if set(types) != set(all_types) else None
         results = search_docs(question, k, tag_filter, subset)[:k]
@@ -88,6 +98,35 @@ def retrieve(question, k, tag_filter, types, all_types, per_type):
             seen.add(key)
             docs.append(doc)
     return docs
+
+
+def _digits_only(value):
+    return re.sub(r"\D", "", str(value)) if value is not None else ""
+
+
+def find_past_question(text, subject=None):
+    """Find a past-paper question named in the text, e.g. 'Q3 from the 2023 paper', using its metadata."""
+    match = re.search(r"\bq(?:uestion)?\.?\s*(\d+)", text, re.IGNORECASE)
+    if not match:
+        return []
+    number = match.group(1)
+    year = re.search(r"\b(?:19|20)\d{2}\b", text)
+    year = year.group(0) if year else None
+
+    found = []
+    for store in stores:
+        for doc in store.docstore._dict.values():
+            meta = doc.metadata or {}
+            if meta.get("source_type") != "question_paper":
+                continue
+            if _digits_only(meta.get("question_no")) != number:
+                continue
+            if year and str(meta.get("year")) != year:
+                continue
+            if subject and meta.get("subject") != subject:
+                continue
+            found.append(doc)
+    return found[:3]
 
 
 def queue_solve(question_text):
@@ -228,7 +267,7 @@ if subjects or any(c for _, c, _ in tags) or present_types:
 if subjects or any(c for _, c, _ in tags):
     picked = st.sidebar.selectbox("Subject", ["All subjects"] + subjects)
     subject_filter = None if picked == "All subjects" else picked
-    chapters = sorted({c for s, c, _ in tags if c and (subject_filter is None or s == subject_filter)})
+    chapters = sorted({c for s, c, _ in tags if c and c != ALL_UNITS and (subject_filter is None or s == subject_filter)})
     picked = st.sidebar.selectbox("Chapter", ["All chapters"] + chapters)
     chapter_filter = None if picked == "All chapters" else picked
 if present_types:
@@ -269,14 +308,23 @@ if ask:
         if chapter_filter:
             tag_filter["chapter"] = chapter_filter
 
-        docs = retrieve(question, k, tag_filter, selected_types, present_types, per_type=(mode == "learn"))
+        # "Solve Q3 from the 2023 paper": find that exact question first, then support it with the notes.
+        exact = find_past_question(question, subject_filter) if mode == "solve" else []
+        search_text = exact[0].page_content if exact else question
+        docs = retrieve(search_text, k, tag_filter, selected_types, present_types, per_type=(mode == "learn"))
+        if exact:
+            exact_texts = {d.page_content for d in exact}
+            docs = exact + [d for d in docs if d.page_content not in exact_texts]
+            if marks is None and _digits_only(exact[0].metadata.get("marks")):
+                marks = _digits_only(exact[0].metadata.get("marks"))  # use the paper's own marks
         if not docs:
             st.warning("No chunks match the selected filters. Try 'All subjects', 'All chapters' or more source types.")
 
     if docs:
         related = []
         if mode in ("qa", "learn") and "question_paper" in present_types:
-            related = [d for d, _ in search_docs(question, 3, tag_filter, ["question_paper"])[:3]]
+            subject_only = {"subject": subject_filter} if subject_filter else {}
+            related = [d for d, _ in search_docs(question, 3, subject_only, ["question_paper"])[:3]]
 
         last = {
             "question": question, "mode": mode, "docs": docs, "related": related,
