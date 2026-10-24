@@ -49,7 +49,9 @@ One line showing how the student can verify the result.
         "max_tokens": 1600,
         "instructions": """
 You are a friendly teacher. Teach the topic using the numbered reference materials, citing them inline like [1].
-If the materials do not cover part of the topic, say so briefly.
+The materials can come from different source types (notes, textbook, lab_manual, question_paper), shown in each source label.
+Combine them: use notes and textbooks for the theory, lab manuals for the worked example, and past-paper
+questions for the practice questions. If the materials do not cover part of the topic, say so briefly.
 
 Use exactly these sections:
 ## 1. Theory
@@ -58,6 +60,7 @@ A short explanation: definition, key ideas and why it matters. Keep it under 150
 One complete example, solved step by step.
 ## 3. Practice
 Three practice questions of increasing difficulty (easy, medium, hard).
+If a question_paper source is available, base at least one question on it and cite it like [n].
 Do NOT give the answers.
 """,
     },
@@ -74,3 +77,14 @@ MARKS_GUIDE = {
     "5": "The problem is worth 5 marks: aim for about 150 words.",
     "10": "The problem is worth 10 marks: aim for about 300 words with clear headings.",
 }
+
+QUIZ_INSTRUCTIONS = """
+Write {n} multiple-choice questions that test whether a student understood the lesson below.
+Base them on the lesson and the numbered reference materials. Mix easy and harder questions.
+
+Return ONLY a JSON list, with no other text. Each item must have exactly these keys:
+- "question": the question text
+- "options": a list of exactly 4 answer texts (no letters like A) or B) in front)
+- "answer_index": the position of the correct option, from 0 to 3
+- "explanation": one short sentence saying why that option is correct
+"""

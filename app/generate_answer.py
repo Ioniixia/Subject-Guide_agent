@@ -1,11 +1,13 @@
 """Gemini answer generation that knows which file each chunk came from.
 Reuses the client and model list from llm.py, so llm.py does not need to change."""
+import json
+import re
 import time
 
 from google.genai import types
 
 from llm import MODELS_TO_TRY, client
-from prompts import MARKS_GUIDE, MODES, PRACTICE_ANSWERS_INSTRUCTIONS
+from prompts import MARKS_GUIDE, MODES, PRACTICE_ANSWERS_INSTRUCTIONS, QUIZ_INSTRUCTIONS
 
 
 def describe_source(doc) -> str:
@@ -93,3 +95,68 @@ You are an expert AI Academic Assistant & Subject Guide.
 {lesson_text}
 """
     return _stream(prompt, 1000)
+
+
+def _complete(prompt: str, max_tokens: int, as_json: bool = False) -> str:
+    """Ask Gemini for a full (non-streamed) reply, with the same retry and fallback logic."""
+    extra = {"response_mime_type": "application/json"} if as_json else {}
+    config = types.GenerateContentConfig(temperature=0.3, max_output_tokens=max_tokens, **extra)
+    last_error = None
+
+    for model_name in MODELS_TO_TRY:
+        for _ in range(2):
+            try:
+                response = client.models.generate_content(model=model_name, contents=prompt, config=config)
+                if response.text:
+                    return response.text
+                last_error = Exception("empty reply")
+                break
+            except Exception as e:
+                last_error = e
+                if "503" in str(e) or "UNAVAILABLE" in str(e):
+                    time.sleep(2)
+                    continue
+                break
+
+    raise Exception(f"All Gemini models failed. Last error: {last_error}")
+
+
+def parse_quiz(text: str) -> list[dict]:
+    """Turn Gemini's JSON reply into a checked list of quiz questions."""
+    text = text.strip()
+    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text)
+    data = json.loads(text)
+    if isinstance(data, dict):
+        data = data.get("questions", [])
+    quiz = []
+    for item in data:
+        options = [str(o) for o in item.get("options", [])]
+        answer = item.get("answer_index")
+        if len(options) != 4 or not isinstance(answer, int) or not 0 <= answer <= 3:
+            continue
+        quiz.append({
+            "question": str(item.get("question", "")).strip(),
+            "options": options,
+            "answer_index": answer,
+            "explanation": str(item.get("explanation", "")).strip(),
+        })
+    if not quiz:
+        raise ValueError("The quiz came back in an unexpected format.")
+    return quiz
+
+
+def generate_quiz(topic: str, docs, lesson_text: str, n: int = 3) -> list[dict]:
+    """Return n multiple-choice questions about the lesson."""
+    prompt = f"""
+You are an expert AI Academic Assistant & Subject Guide.
+{QUIZ_INSTRUCTIONS.format(n=n)}
+### Reference Materials:
+{_format_context(docs)}
+
+### Topic:
+{topic}
+
+### Lesson:
+{lesson_text}
+"""
+    return parse_quiz(_complete(prompt, 1500, as_json=True))
