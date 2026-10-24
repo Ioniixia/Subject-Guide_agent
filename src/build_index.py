@@ -14,23 +14,24 @@ def build_index(file_configs, save_path="faiss_index"):
 
 if __name__ == "__main__":
     file_configs = [
-        {
-            "path": "data/unit1_intro_ai.pptx",
-            "source_type": "notes",
-            "subject": "AIML",
-            "chapter": "Unit 1 - Introduction to AI",
-        },
-        {
-            "path": "data/unit2_ai_frameworks.pptx",
-            "source_type": "notes",
-            "subject": "AIML",
-            "chapter": "Unit 2 - AI Technologies and Frameworks",
-        },
-        {
-            "path": "data/unit3_ml_basics.pptx",
-            "source_type": "notes",
-            "subject": "AIML",
-            "chapter": "Unit 3 - Machine Learning Basics",
-        },
+        # Notes (slides)
+        {"path": "data/unit1_intro_ai.pptx", "source_type": "notes",
+         "subject": "AIML", "chapter": "Unit 1 - Introduction to AI"},
+        {"path": "data/unit2_ai_frameworks.pptx", "source_type": "notes",
+         "subject": "AIML", "chapter": "Unit 2 - AI Technologies and Frameworks"},
+        {"path": "data/unit3_ml_basics.pptx", "source_type": "notes",
+         "subject": "AIML", "chapter": "Unit 3 - Machine Learning Basics"},
+
+        # Textbook chapter and lab manual
+        {"path": "data/aiml_sample_textbook_ch4.docx", "source_type": "textbook",
+         "subject": "AIML", "chapter": "Unit 3 - Machine Learning Basics"},
+        {"path": "data/aiml_sample_lab_manual.docx", "source_type": "lab_manual",
+         "subject": "AIML", "chapter": "Unit 3 - Machine Learning Basics"},
+
+        # Question papers: one chunk per question, with year
+        {"path": "data/aiml_sample_qp_2023.docx", "source_type": "question_paper",
+         "subject": "AIML", "chapter": "All Units", "year": 2023},
+        {"path": "data/aiml_sample_qp_2022.docx", "source_type": "question_paper",
+         "subject": "AIML", "chapter": "All Units", "year": 2022},
     ]
     build_index(file_configs)
