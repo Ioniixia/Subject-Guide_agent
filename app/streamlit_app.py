@@ -1,8 +1,9 @@
 import os
+import time
 
 import streamlit as st
 
-from generate_answer import describe_source, generate_answer, generate_practice_answers
+from generate_answer import describe_source, generate_answer, generate_practice_answers, generate_quiz
 from prompts import MODES
 from session_index import SOURCE_TYPES, SUPPORTED_EXTENSIONS, build_session_index
 
@@ -29,13 +30,71 @@ def load_builtin_index():
 
 
 def collect_tags(stores):
-    """Return the set of (subject, chapter) pairs found in the chunks of the given indexes."""
-    pairs = set()
+    """Return the set of (subject, chapter, source_type) found in the chunks of the given indexes."""
+    found = set()
     for store in stores:
         for doc in store.docstore._dict.values():
             meta = doc.metadata or {}
-            pairs.add((meta.get("subject"), meta.get("chapter")))
-    return pairs
+            found.add((meta.get("subject"), meta.get("chapter"), meta.get("source_type")))
+    return found
+
+
+def make_filter(wanted: dict):
+    """Metadata filter for FAISS. A list value means 'any of these'."""
+
+    def matches(meta):
+        for key, want in wanted.items():
+            have = meta.get(key)
+            if isinstance(want, (list, set, tuple)):
+                if have not in want:
+                    return False
+            elif have != want:
+                return False
+        return True
+
+    return matches
+
+
+def search_docs(question, k, tag_filter, source_types=None):
+    """Search every selected index; returns (doc, score) pairs sorted best first (lower score = closer)."""
+    wanted = dict(tag_filter)
+    if source_types:
+        wanted["source_type"] = source_types
+    results = []
+    for store in stores:
+        extra = {"filter": make_filter(wanted), "fetch_k": max(store.index.ntotal, k)} if wanted else {}
+        results.extend(store.similarity_search_with_score(question, k=k, **extra))
+    results.sort(key=lambda pair: pair[1])
+    return results
+
+
+def retrieve(question, k, tag_filter, types, all_types, per_type):
+    """Pick the best chunks. In 'per_type' mode every source type contributes, so a lesson
+    can combine notes, textbook, lab manual and past papers."""
+    if per_type and len(types) > 1:
+        share = max(1, round(k / len(types)))
+        results = []
+        for source_type in types:
+            results.extend(search_docs(question, share, tag_filter, [source_type])[:share])
+    else:
+        subset = types if set(types) != set(all_types) else None
+        results = search_docs(question, k, tag_filter, subset)[:k]
+
+    seen, docs = set(), []
+    for doc, _ in sorted(results, key=lambda pair: pair[1]):
+        meta = doc.metadata or {}
+        key = (meta.get("source"), meta.get("page"), meta.get("slide"), doc.page_content[:80])
+        if key not in seen:
+            seen.add(key)
+            docs.append(doc)
+    return docs
+
+
+def queue_solve(question_text):
+    """Button callback: switch to 'Solve a problem' and run it on this question."""
+    st.session_state["mode"] = "solve"
+    st.session_state["question"] = question_text
+    st.session_state["auto_run"] = True
 
 
 def show_sources(docs):
@@ -45,8 +104,44 @@ def show_sources(docs):
             st.write(doc.page_content)
 
 
+def show_quiz(last):
+    """Assessment step: a short multiple-choice quiz about the lesson."""
+    st.markdown("### 🧪 Test yourself")
+    if last.get("quiz") is None:
+        if st.button("Start a 3-question quiz", key="start_quiz"):
+            with st.spinner("Writing your quiz..."):
+                try:
+                    last["quiz"] = generate_quiz(last["question"], last["docs"], last["text"])
+                    last["quiz_id"] = int(time.time())
+                    last["quiz_picks"] = None
+                except Exception as e:
+                    st.error(f"Could not make a quiz: {e}")
+        if last.get("quiz") is None:
+            return
+
+    quiz, quiz_id = last["quiz"], last["quiz_id"]
+    with st.form(f"quiz_form_{quiz_id}"):
+        for i, q in enumerate(quiz):
+            st.markdown(f"**{i + 1}. {q['question']}**")
+            st.radio("Choose one", q["options"], index=None, key=f"quiz_{quiz_id}_{i}", label_visibility="collapsed")
+        submitted = st.form_submit_button("Check my answers")
+    if submitted:
+        last["quiz_picks"] = [st.session_state.get(f"quiz_{quiz_id}_{i}") for i in range(len(quiz))]
+
+    picks = last.get("quiz_picks")
+    if picks is not None:
+        score = sum(1 for q, p in zip(quiz, picks) if p == q["options"][q["answer_index"]])
+        st.success(f"Your score: {score} / {len(quiz)}")
+        for i, (q, p) in enumerate(zip(quiz, picks), 1):
+            right = q["options"][q["answer_index"]]
+            if p == right:
+                st.markdown(f"✅ **{i}.** Correct. {q['explanation']}")
+            else:
+                st.markdown(f"❌ **{i}.** The answer is **{right}**. {q['explanation']}")
+
+
 def show_extras(last):
-    """Extra step for the 'Learn a topic' flow: reveal answers after the student tries."""
+    """Extra steps for the 'Learn a topic' flow: practice answers, then a quiz."""
     if last["mode"] != "learn" or not last.get("text"):
         return
     if last.get("answers"):
@@ -60,6 +155,19 @@ def show_extras(last):
             )
         except Exception as e:
             st.error(f"Error calling Gemini API: {e}")
+    show_quiz(last)
+
+
+def show_related(last):
+    """Past-paper questions that match the topic, each with a one-click solve button."""
+    related = last.get("related") or []
+    if not related:
+        return
+    st.markdown("### 📝 Related past questions")
+    for i, doc in enumerate(related, 1):
+        with st.expander(describe_source(doc), expanded=(i == 1)):
+            st.write(doc.page_content)
+            st.button("Solve this question", key=f"solve_{i}", on_click=queue_solve, args=(doc.page_content,))
 
 
 # ---------- Sidebar: upload + tag documents ----------
@@ -108,17 +216,23 @@ if st.session_state.get("session_index") is not None:
 if use_builtin:
     stores.append(builtin)
 
-# Subject / chapter filters, built from the tags found in the indexes
+# Filters, built from the tags found in the indexes
+tags = collect_tags(stores)
 subject_filter = chapter_filter = None
-tag_pairs = collect_tags(stores)
-subjects = sorted({s for s, _ in tag_pairs if s})
-if subjects or any(c for _, c in tag_pairs):
-    st.sidebar.markdown("**Filter by subject / chapter**")
+subjects = sorted({s for s, _, _ in tags if s})
+present_types = sorted({t for _, _, t in tags if t})
+selected_types = list(present_types)
+
+if subjects or any(c for _, c, _ in tags) or present_types:
+    st.sidebar.markdown("**Filters**")
+if subjects or any(c for _, c, _ in tags):
     picked = st.sidebar.selectbox("Subject", ["All subjects"] + subjects)
     subject_filter = None if picked == "All subjects" else picked
-    chapters = sorted({c for s, c in tag_pairs if c and (subject_filter is None or s == subject_filter)})
+    chapters = sorted({c for s, c, _ in tags if c and (subject_filter is None or s == subject_filter)})
     picked = st.sidebar.selectbox("Chapter", ["All chapters"] + chapters)
     chapter_filter = None if picked == "All chapters" else picked
+if present_types:
+    selected_types = st.sidebar.multiselect("Source types", present_types, default=present_types)
 
 # ---------- Main: choose a mode, then ask ----------
 mode = st.radio(
@@ -126,6 +240,7 @@ mode = st.radio(
     list(MODES),
     format_func=lambda m: MODES[m]["label"],
     horizontal=True,
+    key="mode",
 )
 
 marks = None
@@ -133,8 +248,11 @@ if mode == "solve":
     marks = st.selectbox("Marks for this question (sets the answer length)", ["Not specified", "2", "5", "10"])
     marks = None if marks == "Not specified" else marks
 
-question = st.text_area(MODES[mode]["label"], placeholder=MODES[mode]["placeholder"], height=100)
+st.caption(MODES[mode]["placeholder"])
+question = st.text_area("Your question, problem or topic", height=100, key="question")
 ask = st.button("Generate", type="primary")
+if st.session_state.pop("auto_run", False):
+    ask = True  # set by the 'Solve this question' buttons
 
 if ask:
     docs = []
@@ -142,25 +260,28 @@ if ask:
         st.warning("Please enter something first.")
     elif not stores:
         st.warning("Upload files and click 'Build index from uploaded files' first.")
+    elif present_types and not selected_types:
+        st.warning("Select at least one source type.")
     else:
-        # Search every index, then keep the best k results overall (lower score = closer match).
         tag_filter = {}
         if subject_filter:
             tag_filter["subject"] = subject_filter
         if chapter_filter:
             tag_filter["chapter"] = chapter_filter
 
-        results = []
-        for store in stores:
-            extra = {"filter": tag_filter, "fetch_k": max(store.index.ntotal, k)} if tag_filter else {}
-            results.extend(store.similarity_search_with_score(question, k=k, **extra))
-        results.sort(key=lambda pair: pair[1])
-        docs = [doc for doc, _ in results[:k]]
+        docs = retrieve(question, k, tag_filter, selected_types, present_types, per_type=(mode == "learn"))
         if not docs:
-            st.warning("No chunks match the selected subject/chapter. Try 'All subjects' or 'All chapters'.")
+            st.warning("No chunks match the selected filters. Try 'All subjects', 'All chapters' or more source types.")
 
     if docs:
-        last = {"question": question, "mode": mode, "docs": docs, "text": None, "answers": None}
+        related = []
+        if mode in ("qa", "learn") and "question_paper" in present_types:
+            related = [d for d, _ in search_docs(question, 3, tag_filter, ["question_paper"])[:3]]
+
+        last = {
+            "question": question, "mode": mode, "docs": docs, "related": related,
+            "text": None, "answers": None, "quiz": None,
+        }
         st.session_state["last"] = last
 
         left, right = st.columns([1, 1.5])
@@ -173,9 +294,10 @@ if ask:
             except Exception as e:
                 st.error(f"Error calling Gemini API: {e}")
             show_extras(last)
+            show_related(last)
 
 elif st.session_state.get("last"):
-    # Re-draw the previous result, so the 'show answers' button keeps working.
+    # Re-draw the previous result, so the buttons and the quiz keep working.
     last = st.session_state["last"]
     left, right = st.columns([1, 1.5])
     with left:
@@ -184,3 +306,4 @@ elif st.session_state.get("last"):
         st.markdown(f"### {MODES[last['mode']]['title']}")
         st.markdown(last["text"] or "")
         show_extras(last)
+        show_related(last)
