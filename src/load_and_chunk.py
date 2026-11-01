@@ -1,9 +1,29 @@
+import json
 import os
 import re
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pptx import Presentation
+
+DATA_DIR = "data"
+
+
+def _load_json(name):
+    """Read a JSON file from data/, or return {} if it is missing."""
+    path = os.path.join(DATA_DIR, name)
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def difficulty_from_marks(marks):
+    if marks <= 2:
+        return "easy"
+    if marks <= 5:
+        return "medium"
+    return "hard"
 
 
 def load_pptx(file_path):
@@ -42,7 +62,6 @@ def split_questions(file_path, year=None):
     """Split a question paper so every question (Q1., Q2., ...) is its own Document."""
     text = read_plain_text(file_path)
     parts = re.split(r"(?m)^\s*Q(\d+)[.)]\s*", text)
-    # parts = [text before Q1, "1", text of Q1, "2", text of Q2, ...]
     docs = []
     for i in range(1, len(parts) - 1, 2):
         number = int(parts[i])
@@ -57,6 +76,32 @@ def split_questions(file_path, year=None):
             metadata["marks"] = int(marks_match.group(1))
         docs.append(Document(page_content=f"Q{number}. {body}", metadata=metadata))
     return docs
+
+
+def tag_slide_topics(documents, file_path):
+    """Add a topic to each slide, using data/slide_topics.json."""
+    ranges = _load_json("slide_topics.json").get(os.path.basename(file_path), [])
+    for doc in documents:
+        slide = doc.metadata.get("slide")
+        if slide is None:
+            continue
+        for row in ranges:
+            if row["from"] <= slide <= row["to"]:
+                doc.metadata["topic"] = row["topic"]
+                break
+
+
+def tag_questions(documents, year):
+    """Add chapter, topic and difficulty to each question, using data/question_tags.json."""
+    tags = _load_json("question_tags.json").get(str(year), {})
+    for doc in documents:
+        tag = tags.get(str(doc.metadata.get("question_no")))
+        if tag:
+            doc.metadata["chapter"] = tag["chapter"]
+            doc.metadata["topic"] = tag["topic"]
+        marks = doc.metadata.get("marks")
+        if marks is not None:
+            doc.metadata["difficulty"] = difficulty_from_marks(marks)
 
 
 def load_single_file(file_path, source_type="notes", subject="AIML",
@@ -79,6 +124,12 @@ def load_single_file(file_path, source_type="notes", subject="AIML",
         doc.metadata["source_file"] = os.path.basename(file_path)
         doc.metadata["subject"] = subject
         doc.metadata["chapter"] = chapter
+
+    # These run after the basic tags, so they can replace the chapter
+    if source_type == "question_paper":
+        tag_questions(documents, year)
+    elif lower.endswith(".pptx"):
+        tag_slide_topics(documents, file_path)
 
     return documents
 
@@ -117,6 +168,5 @@ def load_and_chunk(pdf_path):
 
 if __name__ == "__main__":
     questions = split_questions("data/aiml_sample_qp_2023.docx", 2023)
-    print(len(questions), "questions found")
-    print(questions[0].metadata)
-    print(questions[0].page_content)
+    tag_questions(questions, 2023)
+    print(questions[5].metadata)

@@ -1,0 +1,41 @@
+{
+  "subject": "AIML",
+  "units": [
+    {
+      "chapter": "Unit 1 - Introduction to AI",
+      "topics": [
+        "Definition of AI",
+        "History of AI",
+        "Applications of AI",
+        "Weak AI vs Strong AI",
+        "AI vs Machine Learning vs Deep Learning",
+        "Types of AI by capability",
+        "Types of Machine Learning",
+        "Semi-supervised learning"
+      ]
+    },
+    {
+      "chapter": "Unit 2 - AI Technologies and Frameworks",
+      "topics": [
+        "Need for AI frameworks",
+        "AI framework vs AI library",
+        "TensorFlow and PyTorch",
+        "Scikit-learn",
+        "Computer vision",
+        "Natural language processing",
+        "Challenges, ethics and future of AI"
+      ]
+    },
+    {
+      "chapter": "Unit 3 - Machine Learning Basics",
+      "topics": [
+        "Machine learning vs traditional programming",
+        "Basic terms: feature, target, model",
+        "Linear regression",
+        "Machine learning workflow",
+        "Decision trees",
+        "Neural network basics"
+      ]
+    }
+  ]
+}

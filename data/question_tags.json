@@ -1,0 +1,66 @@
+{
+  "2023": {
+    "1": {
+      "chapter": "Unit 1 - Introduction to AI",
+      "topic": "Definition of AI"
+    },
+    "2": {
+      "chapter": "Unit 1 - Introduction to AI",
+      "topic": "Weak AI vs Strong AI"
+    },
+    "3": {
+      "chapter": "Unit 1 - Introduction to AI",
+      "topic": "Types of Machine Learning"
+    },
+    "4": {
+      "chapter": "Unit 2 - AI Technologies and Frameworks",
+      "topic": "Need for AI frameworks"
+    },
+    "5": {
+      "chapter": "Unit 2 - AI Technologies and Frameworks",
+      "topic": "TensorFlow and PyTorch"
+    },
+    "6": {
+      "chapter": "Unit 3 - Machine Learning Basics",
+      "topic": "Linear regression"
+    },
+    "7": {
+      "chapter": "Unit 3 - Machine Learning Basics",
+      "topic": "Decision trees"
+    }
+  },
+  "2022": {
+    "1": {
+      "chapter": "Unit 1 - Introduction to AI",
+      "topic": "AI vs Machine Learning vs Deep Learning"
+    },
+    "2": {
+      "chapter": "Unit 1 - Introduction to AI",
+      "topic": "History of AI"
+    },
+    "3": {
+      "chapter": "Unit 1 - Introduction to AI",
+      "topic": "AI vs Machine Learning vs Deep Learning"
+    },
+    "4": {
+      "chapter": "Unit 2 - AI Technologies and Frameworks",
+      "topic": "Natural language processing"
+    },
+    "5": {
+      "chapter": "Unit 2 - AI Technologies and Frameworks",
+      "topic": "Computer vision"
+    },
+    "6": {
+      "chapter": "Unit 1 - Introduction to AI",
+      "topic": "Semi-supervised learning"
+    },
+    "7": {
+      "chapter": "Unit 3 - Machine Learning Basics",
+      "topic": "Machine learning workflow"
+    },
+    "8": {
+      "chapter": "Unit 2 - AI Technologies and Frameworks",
+      "topic": "Challenges, ethics and future of AI"
+    }
+  }
+}

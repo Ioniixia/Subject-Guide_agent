@@ -1,0 +1,108 @@
+{
+  "unit1_intro_ai.pptx": [
+    {
+      "topic": "Definition of AI",
+      "from": 3,
+      "to": 4
+    },
+    {
+      "topic": "History of AI",
+      "from": 5,
+      "to": 11
+    },
+    {
+      "topic": "Applications of AI",
+      "from": 12,
+      "to": 16
+    },
+    {
+      "topic": "Weak AI vs Strong AI",
+      "from": 17,
+      "to": 22
+    },
+    {
+      "topic": "AI vs Machine Learning vs Deep Learning",
+      "from": 23,
+      "to": 26
+    },
+    {
+      "topic": "Types of AI by capability",
+      "from": 27,
+      "to": 35
+    },
+    {
+      "topic": "Types of Machine Learning",
+      "from": 36,
+      "to": 51
+    },
+    {
+      "topic": "Semi-supervised learning",
+      "from": 52,
+      "to": 58
+    }
+  ],
+  "unit2_ai_frameworks.pptx": [
+    {
+      "topic": "Need for AI frameworks",
+      "from": 3,
+      "to": 9
+    },
+    {
+      "topic": "AI framework vs AI library",
+      "from": 10,
+      "to": 12
+    },
+    {
+      "topic": "TensorFlow and PyTorch",
+      "from": 13,
+      "to": 22
+    },
+    {
+      "topic": "Scikit-learn",
+      "from": 23,
+      "to": 25
+    },
+    {
+      "topic": "Computer vision",
+      "from": 26,
+      "to": 31
+    },
+    {
+      "topic": "Natural language processing",
+      "from": 32,
+      "to": 44
+    },
+    {
+      "topic": "Challenges, ethics and future of AI",
+      "from": 45,
+      "to": 53
+    }
+  ],
+  "unit3_ml_basics.pptx": [
+    {
+      "topic": "Machine learning vs traditional programming",
+      "from": 3,
+      "to": 7
+    },
+    {
+      "topic": "Basic terms: feature, target, model",
+      "from": 8,
+      "to": 11
+    },
+    {
+      "topic": "Linear regression",
+      "from": 12,
+      "to": 19
+    },
+    {
+      "topic": "Machine learning workflow",
+      "from": 20,
+      "to": 22
+    },
+    {
+      "topic": "Decision trees",
+      "from": 23,
+      "to": 26
+    }
+  ]
+}
