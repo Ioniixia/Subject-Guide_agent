@@ -81,6 +81,24 @@ flowchart TD
 - **Storage:** the built-in index is saved in `faiss_index/`. The syllabus and tags are JSON files in `data/`. Files a student uploads are indexed in memory for that session only.
 - **Deployment:** Streamlit Cloud, with the Gemini key stored as a secret.
 
+## LLM and embedding choices
+We compared the four models our agent can use. Each one answered the same 5 questions from the AIML notes, using the same prompt and the top 3 retrieved note chunks. The test script is `src/compare_models.py` and the raw table is in `model_comparison.md` (run on 1 November 2026).
+
+| Model | Avg response time | Keyword accuracy | Answers with citations | Errors |
+|---|---|---|---|---|
+| gemini-2.5-flash-lite | not available (404 on every call) | - | - | 5 of 5 |
+| gemini-3.1-flash-lite | 1.5 s | 93% | 5 of 5 | 0 |
+| gemini-flash-latest | 100.3 s | 100% | 3 of 3 | 2 (503) |
+| gemini-3.5-flash | 4.4 s | 83% | 4 of 4 | 1 (503) |
+
+- **Accuracy** is the share of expected key terms from the slides found in each answer. It is a rough check on 5 questions, so differences of a few percent are not meaningful.
+- **Cost:** an answer used about 350 input and 140 output tokens, which is very small. We did not calculate a dollar figure.
+- **Latency and errors** depend on how busy the service is at the time. The 503 errors were overload from the service.
+
+**Choice:** `gemini-3.1-flash-lite` is the main model because it was the fastest, had no errors, and cited its sources every time. The other models are fallbacks if it fails.
+
+**Embeddings:** `all-MiniLM-L6-v2` from Sentence-Transformers. It is free, runs locally with no API limits, and is fast enough for our index of about 150 chunks. We did not benchmark other embedding models.
+
 ## Error handling and logging
 - If the Gemini service is unavailable, the request is retried, then the next model in the list is tried. If every model fails, the app shows an error message instead of crashing.
 - Empty questions are rejected with a message.
