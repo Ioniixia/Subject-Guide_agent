@@ -1,16 +1,28 @@
 import os
-import re
 import time
 
 import streamlit as st
 
+from agent import TOOLS, AgentRun, check_citations, friendly_error, route
 from generate_answer import describe_source, generate_answer, generate_practice_answers, generate_quiz
 from prompts import MODES
 from session_index import SOURCE_TYPES, SUPPORTED_EXTENSIONS, build_session_index
 
 st.set_page_config(page_title="Academic Subject Guide AI", page_icon="📚", layout="wide")
 st.title("📚 Academic Subject Guide AI")
-st.caption("Upload your study material, then ask, solve or learn.")
+st.caption("Upload your study material, then just ask. The agent picks the right tool.")
+
+ALL_UNITS = "All Units"
+
+# Manual modes plus the agent mode
+MODE_OPTIONS = ["agent"] + list(MODES)
+MODE_LABELS = {"agent": "Ask anything (agent)", **{m: MODES[m]["label"] for m in MODES}}
+HINTS = {
+    "agent": "Type what you need, e.g. 'Teach me 2NF', 'Solve Q3 from the 2023 paper', 'Quiz me on ACID' or 'Past questions on transactions'.",
+    **{m: MODES[m]["placeholder"] for m in MODES},
+}
+TITLES = {**{m: MODES[m]["title"] for m in MODES}, "quiz": "🧪 Quiz", "past": "📝 Past questions"}
+MANUAL_TOOL = {"qa": "answer_question", "solve": "solve_problem", "learn": "teach_topic"}
 
 
 @st.cache_resource(show_spinner="Loading embedding model (first time only)...")
@@ -28,9 +40,6 @@ def load_builtin_index():
     from langchain_community.vectorstores import FAISS
 
     return FAISS.load_local("faiss_index", get_embeddings(), allow_dangerous_deserialization=True)
-
-
-ALL_UNITS = "All Units"
 
 
 def collect_tags(stores):
@@ -81,11 +90,7 @@ def retrieve(question, k, tag_filter, types, all_types, per_type):
         share = max(1, round(k / len(types)))
         results = []
         for source_type in types:
-            flt = tag_filter
-            if source_type == "question_paper":
-                # past papers are tagged with the chapter "All Units", so a chapter filter would hide them
-                flt = {key: value for key, value in tag_filter.items() if key != "chapter"}
-            results.extend(search_docs(question, share, flt, [source_type])[:share])
+            results.extend(search_docs(question, share, tag_filter, [source_type])[:share])
     else:
         subset = types if set(types) != set(all_types) else None
         results = search_docs(question, k, tag_filter, subset)[:k]
@@ -98,35 +103,6 @@ def retrieve(question, k, tag_filter, types, all_types, per_type):
             seen.add(key)
             docs.append(doc)
     return docs
-
-
-def _digits_only(value):
-    return re.sub(r"\D", "", str(value)) if value is not None else ""
-
-
-def find_past_question(text, subject=None):
-    """Find a past-paper question named in the text, e.g. 'Q3 from the 2023 paper', using its metadata."""
-    match = re.search(r"\bq(?:uestion)?\.?\s*(\d+)", text, re.IGNORECASE)
-    if not match:
-        return []
-    number = match.group(1)
-    year = re.search(r"\b(?:19|20)\d{2}\b", text)
-    year = year.group(0) if year else None
-
-    found = []
-    for store in stores:
-        for doc in store.docstore._dict.values():
-            meta = doc.metadata or {}
-            if meta.get("source_type") != "question_paper":
-                continue
-            if _digits_only(meta.get("question_no")) != number:
-                continue
-            if year and str(meta.get("year")) != year:
-                continue
-            if subject and meta.get("subject") != subject:
-                continue
-            found.append(doc)
-    return found[:3]
 
 
 def queue_solve(question_text):
@@ -144,8 +120,9 @@ def show_sources(docs):
 
 
 def show_quiz(last):
-    """Assessment step: a short multiple-choice quiz about the lesson."""
-    st.markdown("### 🧪 Test yourself")
+    """Assessment step: a short multiple-choice quiz."""
+    if last["mode"] != "quiz":
+        st.markdown("### 🧪 Test yourself")
     if last.get("quiz") is None:
         if st.button("Start a 3-question quiz", key="start_quiz"):
             with st.spinner("Writing your quiz..."):
@@ -154,7 +131,7 @@ def show_quiz(last):
                     last["quiz_id"] = int(time.time())
                     last["quiz_picks"] = None
                 except Exception as e:
-                    st.error(f"Could not make a quiz: {e}")
+                    st.error(f"Could not make a quiz. {friendly_error(e)}")
         if last.get("quiz") is None:
             return
 
@@ -180,20 +157,21 @@ def show_quiz(last):
 
 
 def show_extras(last):
-    """Extra steps for the 'Learn a topic' flow: practice answers, then a quiz."""
-    if last["mode"] != "learn" or not last.get("text"):
+    """Extra steps after a lesson or quiz: practice answers, then the quiz."""
+    if last["mode"] not in ("learn", "quiz") or not last.get("text"):
         return
-    if last.get("answers"):
-        st.markdown("### ✅ Practice answers")
-        st.markdown(last["answers"])
-    elif st.button("Show answers to the practice questions", key="show_answers"):
-        st.markdown("### ✅ Practice answers")
-        try:
-            last["answers"] = st.write_stream(
-                generate_practice_answers(last["question"], last["docs"], last["text"])
-            )
-        except Exception as e:
-            st.error(f"Error calling Gemini API: {e}")
+    if last["mode"] == "learn":
+        if last.get("answers"):
+            st.markdown("### ✅ Practice answers")
+            st.markdown(last["answers"])
+        elif st.button("Show answers to the practice questions", key="show_answers"):
+            st.markdown("### ✅ Practice answers")
+            try:
+                last["answers"] = st.write_stream(
+                    generate_practice_answers(last["question"], last["docs"], last["text"])
+                )
+            except Exception as e:
+                st.error(friendly_error(e))
     show_quiz(last)
 
 
@@ -202,11 +180,27 @@ def show_related(last):
     related = last.get("related") or []
     if not related:
         return
-    st.markdown("### 📝 Related past questions")
+    if last["mode"] != "past":
+        st.markdown("### 📝 Related past questions")
     for i, doc in enumerate(related, 1):
         with st.expander(describe_source(doc), expanded=(i == 1)):
             st.write(doc.page_content)
             st.button("Solve this question", key=f"solve_{i}", on_click=queue_solve, args=(doc.page_content,))
+
+
+def show_steps(last):
+    """The agent's trace: which agent did what, and how long it took."""
+    steps = last.get("steps") or []
+    if not steps:
+        return
+    with st.expander(f"🧭 Agent steps ({len(steps)})", expanded=last.get("picked_by_agent", False)):
+        st.dataframe(
+            [
+                {"Agent": s["agent"], "Action": s["action"], "Detail": s["detail"], "Time (ms)": s["ms"], "Status": s["status"]}
+                for s in steps
+            ],
+            hide_index=True,
+        )
 
 
 # ---------- Sidebar: upload + tag documents ----------
@@ -247,6 +241,7 @@ if builtin is not None:
     use_builtin = st.sidebar.checkbox("Also search the built-in notes index", value=False)
 
 k = st.sidebar.slider("Chunks to retrieve", 2, 8, 4)
+smart_routing = st.sidebar.checkbox("Smart routing (Gemini picks the tool)", value=True)
 
 # Which indexes will be searched
 stores = []
@@ -273,11 +268,17 @@ if subjects or any(c for _, c, _ in tags):
 if present_types:
     selected_types = st.sidebar.multiselect("Source types", present_types, default=present_types)
 
+history = st.session_state.get("history", [])
+if history:
+    with st.sidebar.expander(f"🕘 Recent questions ({len(history)})"):
+        for item in reversed(history[-8:]):
+            st.write(f"• {item['q']}  \n  _{item['tool']}_")
+
 # ---------- Main: choose a mode, then ask ----------
 mode = st.radio(
     "What do you want to do?",
-    list(MODES),
-    format_func=lambda m: MODES[m]["label"],
+    MODE_OPTIONS,
+    format_func=lambda m: MODE_LABELS[m],
     horizontal=True,
     key="mode",
 )
@@ -287,14 +288,14 @@ if mode == "solve":
     marks = st.selectbox("Marks for this question (sets the answer length)", ["Not specified", "2", "5", "10"])
     marks = None if marks == "Not specified" else marks
 
-st.caption(MODES[mode]["placeholder"])
+st.caption(HINTS[mode])
 question = st.text_area("Your question, problem or topic", height=100, key="question")
 ask = st.button("Generate", type="primary")
 if st.session_state.pop("auto_run", False):
     ask = True  # set by the 'Solve this question' buttons
 
 if ask:
-    docs = []
+    docs, run, tool, effective, plan = [], None, None, None, None
     if not question.strip():
         st.warning("Please enter something first.")
     elif not stores:
@@ -302,47 +303,91 @@ if ask:
     elif present_types and not selected_types:
         st.warning("Select at least one source type.")
     else:
+        run = AgentRun(question, mode)
         tag_filter = {}
         if subject_filter:
             tag_filter["subject"] = subject_filter
         if chapter_filter:
             tag_filter["chapter"] = chapter_filter
+        subject_only = {"subject": subject_filter} if subject_filter else {}
+        try:
+            if mode == "agent":
+                with run.step("Router", "choose tool") as s:
+                    plan = route(question, use_llm=smart_routing)
+                    s["detail"] = f"{plan['tool']} (by {plan['source']}): {plan['reason']}"
+                tool, marks = plan["tool"], plan["marks"]
+            else:
+                tool = MANUAL_TOOL[mode]
+            effective = TOOLS[tool]["mode"]
+            run.tool = tool
 
-        # "Solve Q3 from the 2023 paper": find that exact question first, then support it with the notes.
-        exact = find_past_question(question, subject_filter) if mode == "solve" else []
-        search_text = exact[0].page_content if exact else question
-        docs = retrieve(search_text, k, tag_filter, selected_types, present_types, per_type=(mode == "learn"))
-        if exact:
-            exact_texts = {d.page_content for d in exact}
-            docs = exact + [d for d in docs if d.page_content not in exact_texts]
-            if marks is None and _digits_only(exact[0].metadata.get("marks")):
-                marks = _digits_only(exact[0].metadata.get("marks"))  # use the paper's own marks
-        if not docs:
-            st.warning("No chunks match the selected filters. Try 'All subjects', 'All chapters' or more source types.")
+            with run.step("Retriever", "search the index") as s:
+                if effective == "past":
+                    docs = [d for d, _ in search_docs(question, 5, subject_only, ["question_paper"])[:5]]
+                else:
+                    docs = retrieve(question, k, tag_filter, selected_types, present_types,
+                                    per_type=(effective in ("learn", "quiz")))
+                s["detail"] = f"{len(docs)} chunks"
+        except Exception as e:
+            run.finish()
+            st.error(friendly_error(e))
+            docs = []
+
+        if run is not None and not docs and run.status == "ok":
+            run.finish()
+            if effective == "past":
+                st.warning("No past-paper questions found. Index a question paper first, or relax the filters.")
+            else:
+                st.warning("No chunks match the selected filters. Try 'All subjects', 'All chapters' or more source types.")
 
     if docs:
         related = []
-        if mode in ("qa", "learn") and "question_paper" in present_types:
-            subject_only = {"subject": subject_filter} if subject_filter else {}
+        if effective in ("qa", "learn") and "question_paper" in present_types:
             related = [d for d, _ in search_docs(question, 3, subject_only, ["question_paper"])[:3]]
+        if effective == "past":
+            related = docs
 
         last = {
-            "question": question, "mode": mode, "docs": docs, "related": related,
-            "text": None, "answers": None, "quiz": None,
+            "question": question, "mode": effective, "tool": tool, "docs": docs, "related": related,
+            "text": None, "answers": None, "quiz": None, "steps": run.steps,
+            "picked_by_agent": plan is not None,
         }
         st.session_state["last"] = last
+        st.session_state.setdefault("history", []).append({"q": question[:80], "tool": tool})
 
         left, right = st.columns([1, 1.5])
         with left:
             show_sources(docs)
         with right:
-            st.markdown(f"### {MODES[mode]['title']}")
+            st.markdown(f"### {TITLES[effective]}")
             try:
-                last["text"] = st.write_stream(generate_answer(question, docs, mode, marks))
+                if effective == "past":
+                    st.markdown("These past-paper questions match your topic:")
+                    last["text"] = "past questions"
+                elif effective == "quiz":
+                    with run.step("Tutor", "write quiz") as s:
+                        last["quiz"] = generate_quiz(question, docs, "")
+                        last["quiz_id"] = int(time.time())
+                        last["quiz_picks"] = None
+                        s["detail"] = f"{len(last['quiz'])} questions"
+                    last["text"] = "Here is a short quiz on your topic."
+                    st.markdown(last["text"])
+                else:
+                    stream = generate_answer(question, docs, effective, marks)
+                    last["text"] = st.write_stream(run.track_stream("Tutor", tool, stream))
+                    with run.step("Reviewer", "check citations") as s:
+                        ok, message = check_citations(last["text"], len(docs))
+                        s["detail"] = message
+                        if not ok:
+                            s["status"] = "warning"
+                    if not ok:
+                        st.caption(f"⚠️ {message} Check the source chunks before relying on this answer.")
             except Exception as e:
-                st.error(f"Error calling Gemini API: {e}")
+                st.error(friendly_error(e))
             show_extras(last)
             show_related(last)
+            run.finish()
+            show_steps(last)
 
 elif st.session_state.get("last"):
     # Re-draw the previous result, so the buttons and the quiz keep working.
@@ -351,7 +396,11 @@ elif st.session_state.get("last"):
     with left:
         show_sources(last["docs"])
     with right:
-        st.markdown(f"### {MODES[last['mode']]['title']}")
-        st.markdown(last["text"] or "")
+        st.markdown(f"### {TITLES[last['mode']]}")
+        if last["mode"] == "past":
+            st.markdown("These past-paper questions match your topic:")
+        else:
+            st.markdown(last["text"] or "")
         show_extras(last)
         show_related(last)
+        show_steps(last)
