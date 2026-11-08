@@ -10,3 +10,6 @@ langchain-text-splitters
 sentence-transformers
 faiss-cpu
 torchvision
+fastapi
+uvicorn
+python-multipart
