@@ -4,3 +4,5 @@ __pycache__/
 *.pyc
 data/*.pptx
 logs/
+
+data/app.db
