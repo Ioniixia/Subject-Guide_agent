@@ -195,3 +195,49 @@ def test_openapi_describes_every_endpoint_the_frontend_calls(client):
         assert path in paths
     ask_schema = client.get("/openapi.json").json()["components"]["schemas"]["AskResponse"]["properties"]
     assert "fallback" in ask_schema and "sources" in ask_schema
+
+
+# ---------- models, speed and privacy ----------
+def test_fast_models_come_first_and_the_broken_one_is_gone():
+    import llm
+    assert llm.MODELS_TO_TRY[0] == "gemini-3.1-flash-lite"
+    assert "gemini-2.5-flash-lite" not in llm.MODELS_TO_TRY
+
+
+def test_tutor_step_names_the_model_that_answered(store, monkeypatch):
+    """The first model is unavailable (404), so the second answers, and the step must say so."""
+    import agent_service
+    import llm
+
+    class Chunk:
+        def __init__(self, text):
+            self.text = text
+
+    def fake_stream(*, model, contents, config=None):
+        if model == llm.MODELS_TO_TRY[0]:
+            raise Exception("404 NOT_FOUND")
+        yield Chunk("Supervised learning uses labelled data [1] and [2].")
+
+    monkeypatch.setattr(llm.client.models, "generate_content_stream", llm._remember_model(fake_stream))
+    reply = agent_service.ask("What is supervised learning?", [store], ui_mode="qa", user="t10")
+    tutor = [s for s in reply["steps"] if s["agent"] == "Tutor"][0]
+    assert tutor["status"] == "ok" and tutor["detail"] == f"model: {llm.MODELS_TO_TRY[1]}"
+
+
+def test_sources_never_expose_server_paths(client):
+    import json
+    import core
+    from conftest import make_doc
+    from langchain_community.embeddings import FakeEmbeddings
+    from langchain_community.vectorstores import FAISS
+
+    docs = [
+        make_doc("Notes on 2NF.", "notes", "Normalization", source=r"C:\Users\DELL\AppData\Local\Temp\tmp123\dbms_sample_notes.pdf"),
+        make_doc("Q3: Explain 2NF.", "question_paper", "All Units", source="/tmp/tmpabc/paper2023.pdf", year=2023, question_no=3),
+    ]
+    core.set_uploaded_index(FAISS.from_documents(docs, FakeEmbeddings(size=16)))
+    reply = client.post("/ask", json={"message": "What is 2NF?", "user": "t11"}).json()
+    questions = client.get("/past-questions").json()
+    text = json.dumps([reply, questions])
+    assert "AppData" not in text and "/tmp/" not in text and "Temp" not in text
+    assert {s["source"] for s in reply["sources"]} <= {"dbms_sample_notes.pdf", "paper2023.pdf"}

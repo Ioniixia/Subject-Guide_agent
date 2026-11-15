@@ -1,3 +1,5 @@
+import contextvars
+import functools
 import os
 import time
 
@@ -7,16 +9,38 @@ from google.genai import types
 
 load_dotenv()
 
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+# A request that takes longer than this gives up, and the next model in MODELS_TO_TRY is tried.
+TIMEOUT_SECONDS = int(os.getenv("GEMINI_TIMEOUT_SECONDS", "30"))
 
-# Lite models first: they answer faster. Falls back to the next one if a model
-# is busy (503) or unavailable (404).
+client = genai.Client(
+    api_key=os.getenv("GEMINI_API_KEY"),
+    http_options=types.HttpOptions(timeout=TIMEOUT_SECONDS * 1000),  # the SDK counts in milliseconds
+)
+
+# Fastest first. Falls back to the next one if a model is busy (503), unavailable (404) or too slow.
 MODELS_TO_TRY = [
-    "gemini-2.5-flash-lite",   # fastest: does not spend time "thinking"
     "gemini-3.1-flash-lite",
-    "gemini-flash-latest",
     "gemini-3.5-flash",
+    "gemini-flash-latest",
 ]
+
+# The model used by the latest Gemini call, so the Agent steps panel can show which one answered.
+LAST_MODEL = contextvars.ContextVar("last_model", default=None)
+
+
+def _remember_model(method):
+    """Wrap a client call so it records the model it was asked to use."""
+
+    @functools.wraps(method)
+    def wrapper(*args, **kwargs):
+        LAST_MODEL.set(kwargs.get("model"))
+        return method(*args, **kwargs)
+
+    return wrapper
+
+
+client.models.generate_content = _remember_model(client.models.generate_content)
+client.models.generate_content_stream = _remember_model(client.models.generate_content_stream)
 
 
 def _build_prompt(query: str, context_chunks: list[str]) -> str:
@@ -45,6 +69,7 @@ If the context is insufficient, state clearly what is missing, but synthesize wh
 - Keep the answer under 250 words.
 - Use short headings and bullet points.
 - Include one short practical example only if it helps.
+- After key points, cite the supporting chunk number, like (Chunk 2).
 """
 
 

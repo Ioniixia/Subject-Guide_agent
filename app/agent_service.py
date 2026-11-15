@@ -1,9 +1,11 @@
 """The agent pipeline as plain functions, so the Streamlit app and the API share one implementation.
 Router -> Retriever -> Tutor -> Reviewer."""
+import os
 from dataclasses import dataclass, field
 
 import core
 import db
+from llm import LAST_MODEL
 from agent import TOOLS, AgentRun, check_citations, friendly_error, logger, route
 from generate_answer import describe_source, generate_answer, generate_quiz
 from guardrails import GuardrailError, check_message, fallback_answer, filter_context
@@ -32,12 +34,19 @@ class Prepared:
     extra: dict = field(default_factory=dict)
 
 
+def file_name_only(path):
+    """The file name without the folders. Uploaded files carry the server's temp path, which must not reach the browser."""
+    if not path:
+        return None
+    return os.path.basename(str(path).replace("\\", "/"))
+
+
 def doc_to_dict(doc, n=None):
     meta = doc.metadata or {}
     return {
         "n": n,
         "label": describe_source(doc),
-        "source": meta.get("source"),
+        "source": file_name_only(meta.get("source")),
         "source_type": meta.get("source_type"),
         "subject": meta.get("subject"),
         "chapter": meta.get("chapter"),
@@ -70,7 +79,8 @@ def prepare(message, stores, *, ui_mode="agent", k=4, subject=None, chapter=None
         if ui_mode == "agent":
             with run.step("Router", "choose tool") as s:
                 plan = route(message, use_llm=use_llm_router)
-                s["detail"] = f"{plan['tool']} (by {plan['source']}): {plan['reason']}"
+                model = f", model {plan['model']}" if plan.get("model") else ""
+                s["detail"] = f"{plan['tool']} (by {plan['source']}{model}): {plan['reason']}"
             tool, marks = plan["tool"], plan["marks"]
         else:
             tool = MANUAL_TOOL[ui_mode]
@@ -105,14 +115,17 @@ def prepare(message, stores, *, ui_mode="agent", k=4, subject=None, chapter=None
 
 
 def answer_stream(p: Prepared):
-    """The Tutor's answer, streamed. Timing and errors are recorded in the run."""
-    return p.run.track_stream("Tutor", p.tool, generate_answer(p.message, p.docs, p.mode, p.marks))
+    """The Tutor's answer, streamed. Timing, errors and the model that answered are recorded in the run."""
+    LAST_MODEL.set(None)
+    stream = generate_answer(p.message, p.docs, p.mode, p.marks)
+    return p.run.track_stream("Tutor", p.tool, stream, detail_after=lambda: f"model: {LAST_MODEL.get()}" if LAST_MODEL.get() else "")
 
 
 def write_quiz(p: Prepared, topic_text=""):
+    LAST_MODEL.set(None)
     with p.run.step("Tutor", "write quiz") as s:
         quiz = generate_quiz(p.message, p.docs, topic_text)
-        s["detail"] = f"{len(quiz)} questions"
+        s["detail"] = f"{len(quiz)} questions" + (f", model: {LAST_MODEL.get()}" if LAST_MODEL.get() else "")
     return quiz
 
 

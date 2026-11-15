@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 
 from google.genai import types
 
-from llm import MODELS_TO_TRY, client
+from llm import LAST_MODEL, MODELS_TO_TRY, client
 
 LOG_DIR = os.getenv("AGENT_LOG_DIR", "logs")
 LOG_FILE = os.path.join(LOG_DIR, "agent_runs.jsonl")
@@ -115,6 +115,7 @@ def route(message: str, use_llm: bool = True) -> dict:
                 "reason": str(data.get("reason", "")).strip(),
                 "marks": extract_marks(message) if tool == "solve_problem" else None,
                 "source": "llm",
+                "model": LAST_MODEL.get(),
             }
         except Exception as e:
             logger.warning("Router fell back to rules: %s", e)
@@ -151,8 +152,9 @@ class AgentRun:
             record["ms"] = int((time.time() - started) * 1000)
             self.steps.append(record)
 
-    def track_stream(self, agent: str, action: str, stream, detail: str = ""):
-        """Wrap a streamed answer so its timing and any error are recorded when it ends."""
+    def track_stream(self, agent: str, action: str, stream, detail: str = "", detail_after=None):
+        """Wrap a streamed answer so its timing and any error are recorded when it ends.
+        detail_after is an optional function whose text replaces the detail once the stream is done."""
         record = {"agent": agent, "action": action, "detail": detail, "status": "ok", "ms": 0}
         started = time.time()
 
@@ -167,6 +169,8 @@ class AgentRun:
                 raise
             finally:
                 record["ms"] = int((time.time() - started) * 1000)
+                if detail_after and record["status"] == "ok":
+                    record["detail"] = detail_after() or record["detail"]
                 self.steps.append(record)
 
         return wrapped()
