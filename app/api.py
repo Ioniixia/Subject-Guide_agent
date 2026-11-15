@@ -14,14 +14,32 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Security, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+import core  # Yitong's shared retrieval module (app/core.py)
 import retrieval
 
-MAX_FILE_BYTES = 25 * 1024 * 1024  # 25 MB per uploaded file
+MAX_FILES = 10  # files per upload request
+MAX_FILE_BYTES = 25 * 1024 * 1024  # 25 MB per file
+MAX_TOTAL_BYTES = 50 * 1024 * 1024  # 50 MB per upload request
 
-app = FastAPI(title="Subject Guide API", version="1.0")
+app = FastAPI(
+    title="Subject Guide API",
+    version="1.0",
+    swagger_ui_parameters={"persistAuthorization": True},  # /docs remembers the key after a refresh
+)
+
+# CORS: lets the React frontend (a different address) call this API from the browser.
+# Add the deployed frontend address with:  CORS_ORIGINS=https://my-app.vercel.app,http://localhost:5173
+_origins = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in _origins.split(",") if o.strip()],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["X-API-Key", "Content-Type"],
+)
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
@@ -44,6 +62,14 @@ class SearchRequest(BaseModel):
     topic: str | None = None
     index_id: str | None = None  # id returned by POST /upload
     use_builtin: bool = True
+
+    @field_validator("question")
+    @classmethod
+    def question_not_blank(cls, value):
+        value = value.strip()
+        if not value:
+            raise ValueError("The question must not be empty")
+        return value
 
 
 @app.get("/health")
@@ -78,21 +104,41 @@ def search(request: SearchRequest):
 def upload(
     files: list[UploadFile] = File(...),
     source_type: str = Form("notes"),
-    subject: str = Form("AIML"),
-    chapter: str = Form("General"),
+    subject: str = Form("AIML", max_length=100),
+    chapter: str = Form("General", max_length=100),
     year: int | None = Form(None),
 ):
-    """Upload PDF, DOCX or PPTX files, tag them, and index them. Returns an index_id for /search."""
-    contents = []
+    """Upload PDF, DOCX or PPTX files, tag them, and index them.
+
+    Returns an index_id for /search. The new index is also given to the agent (core.py),
+    so /ask can answer from the uploaded files."""
+    if len(files) > MAX_FILES:
+        raise HTTPException(status_code=400, detail=f"Upload at most {MAX_FILES} files at a time")
+    if year in (None, 0):  # the /docs page fills in 0 when the field is left alone
+        year = None
+    elif not 1990 <= year <= 2100:
+        raise HTTPException(status_code=400, detail="year must be between 1990 and 2100")
+
+    contents, total = [], 0
     for f in files:
-        data = f.file.read()
+        name = f.filename or "upload"
+        if os.path.splitext(name)[1].lower() not in retrieval.ALLOWED_EXTENSIONS:
+            raise HTTPException(status_code=400, detail=f"{name}: only PDF, DOCX and PPTX files are supported")
+        data = f.file.read(MAX_FILE_BYTES + 1)
         if len(data) > MAX_FILE_BYTES:
-            raise HTTPException(status_code=413, detail=f"{f.filename} is larger than 25 MB")
-        contents.append((f.filename, data))
+            raise HTTPException(status_code=413, detail=f"{name} is larger than {MAX_FILE_BYTES // (1024 * 1024)} MB")
+        if not data:
+            raise HTTPException(status_code=400, detail=f"{name} is empty")
+        total += len(data)
+        if total > MAX_TOTAL_BYTES:
+            raise HTTPException(status_code=413, detail=f"The files together are larger than {MAX_TOTAL_BYTES // (1024 * 1024)} MB")
+        contents.append((name, data))
+
     try:
         index_id, chunks = retrieval.index_uploads(contents, source_type, subject, chapter, year)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    core.set_uploaded_index(retrieval.UPLOADS[index_id])
     return {"index_id": index_id, "files": [name for name, _ in contents], "chunks": chunks}
 
 

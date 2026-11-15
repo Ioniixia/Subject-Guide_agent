@@ -7,10 +7,11 @@ from functools import lru_cache
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 
+from core import get_embeddings  # one shared embedding model for the whole server
 from load_and_chunk import load_and_chunk_multiple
 
 INDEX_PATH = os.path.join(ROOT, "faiss_index")
@@ -23,11 +24,6 @@ UPLOADS = {}  # index_id -> FAISS store built from uploaded files
 # Metadata fields that are sent back to the caller
 KEEP_FIELDS = ["source_file", "source_type", "subject", "chapter", "topic", "slide",
                "page", "question_no", "year", "marks", "difficulty"]
-
-
-@lru_cache(maxsize=1)
-def get_embeddings():
-    return HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
 
 @lru_cache(maxsize=1)
