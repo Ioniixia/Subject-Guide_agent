@@ -4,8 +4,9 @@ from dataclasses import dataclass, field
 
 import core
 import db
-from agent import TOOLS, AgentRun, check_citations, logger, route
+from agent import TOOLS, AgentRun, check_citations, friendly_error, logger, route
 from generate_answer import describe_source, generate_answer, generate_quiz
+from guardrails import GuardrailError, check_message, fallback_answer, filter_context
 
 MANUAL_TOOL = {
     "qa": "answer_question",
@@ -51,7 +52,9 @@ def doc_to_dict(doc, n=None):
 
 def prepare(message, stores, *, ui_mode="agent", k=4, subject=None, chapter=None, source_types=None,
             use_llm_router=True, marks=None) -> Prepared:
-    """Router and Retriever steps. Raises if one of them fails (the run is logged first)."""
+    """Guardrail, Router and Retriever steps. Raises GuardrailError for a rejected message, or the
+    original error if the router or retriever fails (the run is logged first)."""
+    message = check_message(message)
     run = AgentRun(message, ui_mode)
     tag_filter = {}
     if subject:
@@ -80,6 +83,12 @@ def prepare(message, stores, *, ui_mode="agent", k=4, subject=None, chapter=None
             else:
                 docs = core.retrieve(stores, message, k, tag_filter, types, present, per_type=(mode in ("learn", "quiz")))
             s["detail"] = f"{len(docs)} chunks"
+
+        docs, skipped = filter_context(docs)
+        if skipped:
+            with run.step("Guardrail", "skip unsafe chunks") as s:
+                s["detail"] = f"{skipped} chunk(s) skipped because they contain instruction-like text"
+                s["status"] = "warning"
 
         related = []
         if mode in ("qa", "learn") and "question_paper" in present:
@@ -131,17 +140,18 @@ def ask(message, stores, *, user="guest", **options) -> dict:
         p.run.finish()
         return {"run_id": p.run.id, "tool": p.tool, "reason": (p.plan or {}).get("reason", ""), "mode": p.mode,
                 "answer": "", "quiz": None, "sources": [], "related": [], "citations_ok": True,
-                "steps": p.run.steps, "notice": "No chunks matched the question and filters."}
-    answer, quiz = "", None
+                "fallback": False, "steps": p.run.steps, "notice": "No chunks matched the question and filters."}
+    answer, quiz, fallback, problem = "", None, False, ""
     try:
         if p.mode == "quiz":
             quiz = write_quiz(p)
         elif p.mode != "past":
             answer = "".join(answer_stream(p))
-    except Exception:
-        p.run.finish()
-        raise
-    ok, message = finalize(p, answer, user)
+    except Exception as e:  # the model failed: show the retrieved passages instead of an error
+        fallback, problem = True, friendly_error(e)
+        answer = fallback_answer(p.docs, describe_source, problem)
+        quiz = None
+    ok, message = finalize(p, "" if fallback else answer, user)
     return {
         "run_id": p.run.id,
         "tool": p.tool,
@@ -152,6 +162,7 @@ def ask(message, stores, *, user="guest", **options) -> dict:
         "sources": [doc_to_dict(d, i) for i, d in enumerate(p.docs, 1)],
         "related": [doc_to_dict(d, i) for i, d in enumerate(p.related, 1)],
         "citations_ok": ok,
-        "notice": "" if ok else message,
+        "fallback": fallback,
+        "notice": problem if fallback else ("" if ok else message),
         "steps": p.run.steps,
     }
