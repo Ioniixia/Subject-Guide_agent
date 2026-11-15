@@ -4,7 +4,7 @@
     app.include_router(agent_router)
 """
 from datetime import date
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -16,9 +16,11 @@ from agent import friendly_error
 from agent_service import ask as run_ask
 from agent_service import doc_to_dict
 from generate_answer import generate_practice_answers, generate_quiz
+from guardrails import GuardrailError, RateLimiter, check_message
 from planner import build_study_plan, weak_areas
 
 router = APIRouter()
+limiter = RateLimiter()
 
 
 class Filters(BaseModel):
@@ -69,6 +71,118 @@ class StudyPlanRequest(BaseModel):
     user: str = "guest"
 
 
+class Source(BaseModel):
+    n: Optional[int] = None
+    label: str
+    source: Optional[str] = None
+    source_type: Optional[str] = None
+    subject: Optional[str] = None
+    chapter: Optional[str] = None
+    page: Optional[Any] = None
+    slide: Optional[Any] = None
+    question_no: Optional[Any] = None
+    year: Optional[Any] = None
+    marks: Optional[Any] = None
+    text: str
+
+
+class Step(BaseModel):
+    agent: str
+    action: str
+    detail: str = ""
+    status: str
+    ms: int
+
+
+class QuizQuestion(BaseModel):
+    question: str
+    options: list[str]
+    answer_index: int
+    explanation: str
+
+
+class AskResponse(BaseModel):
+    run_id: str
+    tool: str
+    reason: str = ""
+    mode: str
+    answer: str
+    quiz: Optional[list[QuizQuestion]] = None
+    sources: list[Source]
+    related: list[Source]
+    citations_ok: bool
+    fallback: bool = False  # true when Gemini failed and `answer` is built from the student's own notes
+    notice: str = ""
+    steps: list[Step]
+
+
+class QuizResponse(BaseModel):
+    questions: list[QuizQuestion]
+    sources: list[Source]
+
+
+class PracticeAnswersResponse(BaseModel):
+    answers: str
+
+
+class PastQuestionsResponse(BaseModel):
+    questions: list[Source]
+
+
+class SavedResponse(BaseModel):
+    saved: bool
+
+
+class HistoryItem(BaseModel):
+    ts: str
+    question: str
+    tool: Optional[str] = None
+    run_id: Optional[str] = None
+
+
+class HistoryResponse(BaseModel):
+    history: list[HistoryItem]
+
+
+class ProgressRow(BaseModel):
+    subject: str
+    chapter: str
+    attempts: int
+    earned: float
+    total: float
+    accuracy: float
+
+
+class ProgressResponse(BaseModel):
+    chapters: list[ProgressRow]
+
+
+class WeakAreasResponse(BaseModel):
+    weak_areas: list[ProgressRow]
+
+
+class PlanDay(BaseModel):
+    day: int
+    date: str
+    focus: str
+    tasks: list[str]
+    hours: int
+
+
+class StudyPlanResponse(BaseModel):
+    plan: list[PlanDay]
+
+
+class AnalyticsResponse(BaseModel):
+    total_runs: int
+    errors: int
+    error_rate: float
+    avg_total_ms: int
+    by_tool: dict[str, int]
+    avg_step_ms: dict[str, int]
+    recent_errors: list[dict]
+
+
 def _stores():
     stores = core.active_stores()
     if not stores:
@@ -84,65 +198,84 @@ def _gemini_error(e: Exception):
     return HTTPException(502, friendly_error(e))
 
 
-@router.post("/ask")
+def _guard(text: str) -> str:
+    """Validate a student's text. A rejected message becomes a 400 with a message to show."""
+    try:
+        return check_message(text)
+    except GuardrailError as e:
+        raise HTTPException(400, str(e))
+
+
+def _limit(user: str):
+    if not limiter.allow(user or "guest"):
+        raise HTTPException(429, "Too many requests. Please wait a moment and try again.")
+
+
+@router.post("/ask", response_model=AskResponse)
 def ask(body: AskRequest):
     """The agent picks a tool, retrieves, answers and reviews. Returns answer, sources, steps and run_id."""
+    _limit(body.user)
+    message = _guard(body.message)
     stores = _stores()
     try:
-        return run_ask(body.message, stores, user=body.user, use_llm_router=body.smart_routing,
+        return run_ask(message, stores, user=body.user, use_llm_router=body.smart_routing,
                        ui_mode=body.mode, marks=body.marks, **_options(body))
+    except GuardrailError as e:
+        raise HTTPException(400, str(e))
     except Exception as e:
         raise _gemini_error(e)
 
 
-@router.post("/quiz")
+@router.post("/quiz", response_model=QuizResponse)
 def quiz(body: QuizRequest):
     """Three multiple-choice questions on a topic."""
+    topic = _guard(body.topic)
     stores = _stores()
     present = sorted({t for _, _, t in core.collect_tags(stores) if t})
     tag_filter = {key: val for key, val in (("subject", body.subject), ("chapter", body.chapter)) if val}
-    docs = core.retrieve(stores, body.topic, body.k, tag_filter, body.source_types or present, present, per_type=True)
+    docs = core.retrieve(stores, topic, body.k, tag_filter, body.source_types or present, present, per_type=True)
     if not docs:
         raise HTTPException(404, "No study material matches this topic and filters.")
     try:
-        return {"questions": generate_quiz(body.topic, docs, ""), "sources": [doc_to_dict(d, i) for i, d in enumerate(docs, 1)]}
+        return {"questions": generate_quiz(topic, docs, ""), "sources": [doc_to_dict(d, i) for i, d in enumerate(docs, 1)]}
     except Exception as e:
         raise _gemini_error(e)
 
 
-@router.post("/practice-answers")
+@router.post("/practice-answers", response_model=PracticeAnswersResponse)
 def practice_answers(body: PracticeAnswersRequest):
     """Answers to the practice questions at the end of a lesson."""
+    topic = _guard(body.topic)
     stores = _stores()
     present = sorted({t for _, _, t in core.collect_tags(stores) if t})
     tag_filter = {key: val for key, val in (("subject", body.subject), ("chapter", body.chapter)) if val}
-    docs = core.retrieve(stores, body.topic, body.k, tag_filter, body.source_types or present, present, per_type=True)
+    docs = core.retrieve(stores, topic, body.k, tag_filter, body.source_types or present, present, per_type=True)
     try:
-        return {"answers": "".join(generate_practice_answers(body.topic, docs, body.lesson_text))}
+        return {"answers": "".join(generate_practice_answers(topic, docs, body.lesson_text))}
     except Exception as e:
         raise _gemini_error(e)
 
 
-@router.get("/past-questions")
+@router.get("/past-questions", response_model=PastQuestionsResponse)
 def past_questions(subject: Optional[str] = None, chapter: Optional[str] = None, limit: int = 20):
     """Past-paper questions, newest first."""
     docs = core.practice_questions(_stores(), subject, chapter, limit=min(max(limit, 1), 100))
     return {"questions": [doc_to_dict(d, i) for i, d in enumerate(docs, 1)]}
 
 
-@router.post("/feedback")
+@router.post("/feedback", response_model=SavedResponse)
 def feedback(body: FeedbackRequest):
     """Thumbs up or down for one answer (use the run_id from /ask)."""
     db.add_feedback(body.user, body.run_id, body.rating, body.comment)
     return {"saved": True}
 
 
-@router.get("/history")
+@router.get("/history", response_model=HistoryResponse)
 def history(user: str = "guest", limit: int = 10):
     return {"history": db.list_history(user, min(max(limit, 1), 50))}
 
 
-@router.post("/progress")
+@router.post("/progress", response_model=SavedResponse)
 def save_progress(body: ProgressRequest):
     """Save one quiz or practice result."""
     if body.score > body.total:
@@ -151,19 +284,19 @@ def save_progress(body: ProgressRequest):
     return {"saved": True}
 
 
-@router.get("/progress")
+@router.get("/progress", response_model=ProgressResponse)
 def get_progress(user: str = "guest"):
     """Accuracy per chapter."""
     return {"chapters": db.chapter_summary(user)}
 
 
-@router.get("/weak-areas")
+@router.get("/weak-areas", response_model=WeakAreasResponse)
 def get_weak_areas(user: str = "guest"):
     """Chapters with at least 2 attempts and accuracy below 60%, weakest first."""
     return {"weak_areas": weak_areas(db.chapter_summary(user))}
 
 
-@router.post("/study-plan")
+@router.post("/study-plan", response_model=StudyPlanResponse)
 def study_plan(body: StudyPlanRequest):
     """A day-by-day plan from today to the exam, with extra time for weak areas."""
     chapters = body.chapters or core.list_chapters(core.active_stores(), body.subject)
@@ -174,7 +307,7 @@ def study_plan(body: StudyPlanRequest):
         raise HTTPException(422, str(e))
 
 
-@router.get("/analytics")
+@router.get("/analytics", response_model=AnalyticsResponse)
 def get_analytics():
     """Summary of the agent run log: runs per tool, error rate and average times."""
     return analytics.summarize()

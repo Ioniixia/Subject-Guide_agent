@@ -11,6 +11,7 @@ import db
 from agent import friendly_error
 from agent_service import answer_stream, finalize, prepare, write_quiz
 from generate_answer import describe_source, generate_answer, generate_practice_answers
+from guardrails import GuardrailError, fallback_answer
 from planner import build_study_plan, weak_areas
 from prompts import MODES
 from session_index import SOURCE_TYPES, SUPPORTED_EXTENSIONS, build_session_index
@@ -142,6 +143,28 @@ def save_feedback(last, rating):
     last["feedback"] = rating
 
 
+def build_export(last):
+    """A study note the student can keep: the answer, practice answers, quiz and sources."""
+    lines = [f"# {last['question']}", "", f"_Tool: {last['tool']}_", "", last.get("text") or ""]
+    if last.get("answers"):
+        lines += ["", "## Practice answers", "", last["answers"]]
+    if last.get("quiz"):
+        lines += ["", "## Quiz", ""]
+        for i, q in enumerate(last["quiz"], 1):
+            lines.append(f"{i}. {q['question']}")
+            lines += [f"   - {option}" for option in q["options"]]
+            lines.append(f"   - Answer: {q['options'][q['answer_index']]}. {q['explanation']}")
+    lines += ["", "## Sources", ""]
+    lines += [f"{i}. {describe_source(d)}" for i, d in enumerate(last["docs"], 1)]
+    return "\n".join(lines) + "\n"
+
+
+def show_export(last):
+    if last.get("text") and last["mode"] != "past":
+        st.download_button("⬇️ Download as Markdown", build_export(last), file_name="study_notes.md",
+                           mime="text/markdown", key="export_md")
+
+
 def show_feedback(last):
     if not last.get("text") or last["mode"] == "past":
         return
@@ -254,6 +277,9 @@ def run_study(question, mode, marks):
             question, stores, ui_mode=mode, k=k, subject=subject_filter, chapter=chapter_filter,
             source_types=selected_types, use_llm_router=smart_routing, marks=marks,
         )
+    except GuardrailError as e:
+        st.warning(str(e))
+        return
     except Exception as e:
         st.error(friendly_error(e))
         return
@@ -297,12 +323,17 @@ def run_study(question, mode, marks):
                         last["quiz_id"] = int(time.time())
         except Exception as e:
             st.error(friendly_error(e))
-        ok, message = finalize(p, last["text"] or "", user)
+            if p.mode in ("qa", "solve", "learn") and not last["text"]:
+                # The model failed: show the passages from the student's own material instead
+                last["text"] = fallback_answer(p.docs, describe_source, "The AI model is unavailable right now.")
+                st.markdown(last["text"])
+        ok, message = finalize(p, "" if "unavailable right now" in (last["text"] or "")[:80] else (last["text"] or ""), user)
         if not ok:
             st.caption(f"⚠️ {message} Check the source chunks before relying on this answer.")
         show_extras(last)
         show_related(last)
         show_feedback(last)
+        show_export(last)
         show_steps(last)
 
 
@@ -345,6 +376,7 @@ def study_page():
             show_extras(last)
             show_related(last)
             show_feedback(last)
+            show_export(last)
             show_steps(last)
 
 
