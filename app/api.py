@@ -1,10 +1,9 @@
 """FastAPI backend for the Subject Guide agent.
 
-Run from the project root:   python -m uvicorn app.api:app
+Run from the project root:   python -m uvicorn app.api:app --reload
 Interactive docs:            http://127.0.0.1:8000/docs
 """
 import os
-import secrets
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -13,12 +12,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Security, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field, field_validator
 
-import core  # Yitong's shared retrieval module (app/core.py)
+import core  # Shared retrieval module (app/core.py)
 import retrieval
 
 MAX_FILES = 10  # files per upload request
@@ -28,29 +26,26 @@ MAX_TOTAL_BYTES = 50 * 1024 * 1024  # 50 MB per upload request
 app = FastAPI(
     title="Subject Guide API",
     version="1.0",
-    swagger_ui_parameters={"persistAuthorization": True},  # /docs remembers the key after a refresh
 )
 
-# CORS: lets the React frontend (a different address) call this API from the browser.
-# Add the deployed frontend address with:  CORS_ORIGINS=https://my-app.vercel.app,http://localhost:5173
+# CORS: lets the React frontend call this API from the browser without restriction.
 _origins = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in _origins.split(",") if o.strip()],
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["X-API-Key", "Content-Type"],
+    allow_origins=[o.strip() for o in _origins.split(",") if o.strip()] or ["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
-
-def require_api_key(key: str | None = Security(api_key_header)):
-    """Simple authentication: the X-API-Key header must match the API_KEY setting."""
-    expected = os.getenv("API_KEY")
-    if not expected:
-        raise HTTPException(status_code=500, detail="API_KEY is not set on the server")
-    if not key or not secrets.compare_digest(key, expected):
-        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+@app.on_event("startup")
+def preload_index():
+    """Pre-warm the index in memory so the first question answers instantly without loading delay."""
+    try:
+        core.load_builtin_index()
+    except Exception:
+        pass
 
 
 class SearchRequest(BaseModel):
@@ -78,13 +73,13 @@ def health():
     return {"status": "ok", "uploaded_indexes": len(retrieval.UPLOADS)}
 
 
-@app.get("/filters", dependencies=[Depends(require_api_key)])
+@app.get("/filters")
 def filters():
     """Subjects, chapters, source types, topics and years in the built-in index."""
     return retrieval.list_filters()
 
 
-@app.post("/search", dependencies=[Depends(require_api_key)])
+@app.post("/search")
 def search(request: SearchRequest):
     """Question plus filters in, closest chunks (with source metadata) out."""
     try:
@@ -100,7 +95,7 @@ def search(request: SearchRequest):
     }
 
 
-@app.post("/upload", dependencies=[Depends(require_api_key)])
+@app.post("/upload")
 def upload(
     files: list[UploadFile] = File(...),
     source_type: str = Form("notes"),
@@ -168,11 +163,11 @@ def _custom_openapi():
 app.openapi = _custom_openapi
 
 
-# Yitong's endpoints: app/agent_routes.py must define `router = APIRouter()`
+# Agent endpoints: app/agent_routes.py defines `router = APIRouter()`
 try:
     from agent_routes import router as agent_router
 
-    app.include_router(agent_router, dependencies=[Depends(require_api_key)])
+    app.include_router(agent_router)
 except ModuleNotFoundError as e:
     if e.name != "agent_routes":
         raise

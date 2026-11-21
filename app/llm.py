@@ -10,7 +10,8 @@ from google.genai import types
 load_dotenv()
 
 # A request that takes longer than this gives up, and the next model in MODELS_TO_TRY is tried.
-TIMEOUT_SECONDS = int(os.getenv("GEMINI_TIMEOUT_SECONDS", "30"))
+# Note: Google GenAI requires a minimum deadline of 10s.
+TIMEOUT_SECONDS = int(os.getenv("GEMINI_TIMEOUT_SECONDS", "15"))
 
 client = genai.Client(
     api_key=os.getenv("GEMINI_API_KEY"),
@@ -20,7 +21,8 @@ client = genai.Client(
 # Fastest first. Falls back to the next one if a model is busy (503), unavailable (404) or too slow.
 MODELS_TO_TRY = [
     "gemini-3.1-flash-lite",
-    "gemini-3.5-flash",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
     "gemini-flash-latest",
 ]
 
