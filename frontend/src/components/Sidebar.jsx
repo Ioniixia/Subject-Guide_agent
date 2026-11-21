@@ -46,10 +46,6 @@ export default function Sidebar({ settings, onSettings, filters, onFilters, opti
           <input value={settings.baseUrl} onChange={(e) => updateSettings({ baseUrl: e.target.value })} />
         </label>
         <label>
-          API key
-          <input type="password" value={settings.apiKey} onChange={(e) => updateSettings({ apiKey: e.target.value })} />
-        </label>
-        <label>
           Your name (keeps progress separate)
           <input value={settings.user} onChange={(e) => updateSettings({ user: e.target.value.trim() || "guest" })} />
         </label>
