@@ -1,3 +1,4 @@
+
 import { useCallback, useEffect, useState } from "react";
 import { api, getSettings } from "./api";
 import Sidebar from "./components/Sidebar";
@@ -9,11 +10,38 @@ import "./styles.css";
 
 const PAGES = ["Study", "Practice", "Progress", "Study plan"];
 
+const PAGE_INFO = {
+  Study: {
+    eyebrow: "YOUR LEARNING SPACE",
+    description: "Ask questions, understand concepts and get help with your studies.",
+  },
+  Practice: {
+    eyebrow: "TEST YOUR KNOWLEDGE",
+    description: "Practise what you've learned and check your understanding.",
+  },
+  Progress: {
+    eyebrow: "YOUR PERFORMANCE",
+    description: "Review your learning progress and identify topics to revisit.",
+  },
+  "Study plan": {
+    eyebrow: "YOUR STUDY ROUTINE",
+    description: "Organise your topics and build a focused study plan.",
+  },
+};
+
 export default function App() {
   const [settings, setSettings] = useState(getSettings());
   const [page, setPage] = useState("Study");
-  const [filters, setFilters] = useState({ subject: "", chapter: "", sourceTypes: [] });
-  const [options, setOptions] = useState({ subjects: [], chapters: [], sourceTypes: [] });
+  const [filters, setFilters] = useState({
+    subject: "",
+    chapter: "",
+    sourceTypes: [],
+  });
+  const [options, setOptions] = useState({
+    subjects: [],
+    chapters: [],
+    sourceTypes: [],
+  });
   const [serverStatus, setServerStatus] = useState("checking");
   const [serverError, setServerError] = useState("");
   const [preset, setPreset] = useState(null);
@@ -34,10 +62,11 @@ export default function App() {
       );
       return;
     }
+
     try {
       setOptions(await api.filters());
     } catch {
-      setOptions({ subjects: [], chapters: [], sourceTypes: [] }); // the filter boxes become free text
+      setOptions({ subjects: [], chapters: [], sourceTypes: [] });
     }
   }, []);
 
@@ -50,18 +79,10 @@ export default function App() {
     setPage("Study");
   }
 
+  const pageInfo = PAGE_INFO[page];
+
   return (
     <div className="layout">
-      <header>
-        <h1>📚 Academic Subject Guide AI</h1>
-        <nav>
-          {PAGES.map((name) => (
-            <button key={name} className={name === page ? "tab active" : "tab"} onClick={() => setPage(name)}>
-              {name}
-            </button>
-          ))}
-        </nav>
-      </header>
       <Sidebar
         settings={settings}
         onSettings={setSettings}
@@ -72,13 +93,61 @@ export default function App() {
         serverError={serverError}
         onUploaded={refresh}
       />
-      <main>
-        {/* Study stays mounted so a result is still there when you come back to the page */}
-        <div hidden={page !== "Study"}><Study settings={settings} filters={filters} preset={preset} /></div>
-        {page === "Practice" && <Practice settings={settings} filters={filters} />}
-        {page === "Progress" && <Progress settings={settings} onRevise={revise} />}
-        {page === "Study plan" && <Plan settings={settings} filters={filters} />}
-      </main>
+
+      <div className="workspace">
+        <header className="topbar">
+          <div className="brand">
+            <div className="brand-mark">✦</div>
+            <div>
+              <h1>Academic Subject Guide</h1>
+              <p>AI-powered learning assistant</p>
+            </div>
+          </div>
+
+          <nav aria-label="Main navigation">
+            {PAGES.map((name) => (
+              <button
+                key={name}
+                className={name === page ? "tab active" : "tab"}
+                onClick={() => setPage(name)}
+                aria-current={name === page ? "page" : undefined}
+              >
+                {name}
+              </button>
+            ))}
+          </nav>
+        </header>
+
+        <main>
+          <div className="page-heading">
+            <p className="eyebrow">{pageInfo.eyebrow}</p>
+            <h2>{page}</h2>
+            <p>{pageInfo.description}</p>
+          </div>
+
+          <div className="page-content">
+            <div hidden={page !== "Study"}>
+              <Study
+                settings={settings}
+                filters={filters}
+                preset={preset}
+              />
+            </div>
+
+            {page === "Practice" && (
+              <Practice settings={settings} filters={filters} />
+            )}
+
+            {page === "Progress" && (
+              <Progress settings={settings} onRevise={revise} />
+            )}
+
+            {page === "Study plan" && (
+              <Plan settings={settings} filters={filters} />
+            )}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

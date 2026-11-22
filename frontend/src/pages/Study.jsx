@@ -1,9 +1,25 @@
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { api } from "../api";
-import { HINTS, MODES, buildExport, downloadText, filterBody, topicOf } from "../helpers";
+import {
+  HINTS,
+  MODES,
+  buildExport,
+  downloadText,
+  filterBody,
+  topicOf,
+} from "../helpers";
 import Quiz from "../components/Quiz";
 import { Sources, Steps } from "../components/Sources";
+
+const MODE_DETAILS = {
+  agent: { icon: "✦", subtitle: "Let AI choose the right study tool" },
+  qa: { icon: "◉", subtitle: "Get clear answers to your questions" },
+  solve: { icon: "⌘", subtitle: "Work through problems step by step" },
+  learn: { icon: "▤", subtitle: "Understand a topic from the basics" },
+  revise: { icon: "↗", subtitle: "Get a lesson, answers and a quiz" },
+};
 
 export default function Study({ settings, filters, preset }) {
   const [mode, setMode] = useState("agent");
@@ -21,6 +37,7 @@ export default function Study({ settings, filters, preset }) {
       setError("");
       setResult(null);
       setExtras({});
+
       try {
         const reply = await api.ask({
           message: text,
@@ -29,15 +46,19 @@ export default function Study({ settings, filters, preset }) {
           user: settings.user,
           ...filterBody(filters),
         });
-        const topic = text;
-        setResult({ ...reply, question: topic });
 
-        // One-click revision: practice answers and a quiz right after the lesson
+        setResult({ ...reply, question: text });
+
         if (runMode === "revise" && reply.answer && !reply.fallback) {
           const [answers, quiz] = await Promise.allSettled([
-            api.practiceAnswers({ topic, lesson_text: reply.answer, ...filterBody(filters) }),
-            api.quiz({ topic, ...filterBody(filters) }),
+            api.practiceAnswers({
+              topic: text,
+              lesson_text: reply.answer,
+              ...filterBody(filters),
+            }),
+            api.quiz({ topic: text, ...filterBody(filters) }),
           ]);
+
           setExtras({
             answers: answers.status === "fulfilled" ? answers.value.answers : "",
             quiz: quiz.status === "fulfilled" ? quiz.value.questions : null,
@@ -52,7 +73,6 @@ export default function Study({ settings, filters, preset }) {
     [settings.user, filters]
   );
 
-  // The Progress page's Revise button sends a preset
   useEffect(() => {
     if (preset && preset.id !== lastPreset.current) {
       lastPreset.current = preset.id;
@@ -64,7 +84,11 @@ export default function Study({ settings, filters, preset }) {
 
   async function showAnswers() {
     try {
-      const reply = await api.practiceAnswers({ topic: result.question, lesson_text: result.answer, ...filterBody(filters) });
+      const reply = await api.practiceAnswers({
+        topic: result.question,
+        lesson_text: result.answer,
+        ...filterBody(filters),
+      });
       setExtras((e) => ({ ...e, answers: reply.answers }));
     } catch (e) {
       setError(e.message);
@@ -73,7 +97,10 @@ export default function Study({ settings, filters, preset }) {
 
   async function startQuiz() {
     try {
-      const reply = await api.quiz({ topic: result.question, ...filterBody(filters) });
+      const reply = await api.quiz({
+        topic: result.question,
+        ...filterBody(filters),
+      });
       setExtras((e) => ({ ...e, quiz: reply.questions }));
     } catch (e) {
       setError(e.message);
@@ -82,7 +109,11 @@ export default function Study({ settings, filters, preset }) {
 
   async function sendFeedback(rating) {
     try {
-      await api.feedback({ run_id: result.run_id, rating, user: settings.user });
+      await api.feedback({
+        run_id: result.run_id,
+        rating,
+        user: settings.user,
+      });
       setExtras((e) => ({ ...e, feedback: rating }));
     } catch (e) {
       setError(e.message);
@@ -91,56 +122,170 @@ export default function Study({ settings, filters, preset }) {
 
   function saveQuizScore(score, total) {
     const { subject, chapter } = topicOf(result.sources, filters);
-    api.saveProgress({ user: settings.user, subject, chapter, kind: "quiz", score, total })
+
+    api.saveProgress({
+      user: settings.user,
+      subject,
+      chapter,
+      kind: "quiz",
+      score,
+      total,
+    })
       .then(() => setExtras((e) => ({ ...e, saved: chapter })))
       .catch((e) => setError(e.message));
   }
 
   const quiz = extras.quiz || result?.quiz;
-  const isLesson = result && (result.mode === "learn" || result.mode === "quiz") && result.answer && !result.fallback;
+  const isLesson =
+    result &&
+    (result.mode === "learn" || result.mode === "quiz") &&
+    result.answer &&
+    !result.fallback;
 
   return (
-    <section>
-      <div className="modes" role="radiogroup" aria-label="What do you want to do?">
-        {MODES.map(([value, label]) => (
-          <label key={value} className="option">
-            <input type="radio" name="mode" checked={mode === value} onChange={() => setMode(value)} />
-            {label}
-          </label>
-        ))}
+    <section className="study-workspace">
+      <div className="study-intro">
+        <div>
+          <span className="study-kicker">YOUR AI STUDY COMPANION</span>
+          <h2>What would you like to learn today?</h2>
+          <p>
+            Ask a question, explore a topic or solve a problem.
+            Your learning starts here.
+          </p>
+        </div>
+        <div className="study-decoration" aria-hidden="true">
+          <span>✦</span>
+          <span>✧</span>
+          <span>✦</span>
+        </div>
       </div>
-      {mode === "solve" && (
-        <label>
-          Marks (sets the answer length)
-          <select value={marks} onChange={(e) => setMarks(e.target.value)}>
-            <option value="">Not specified</option>
-            <option>2</option>
-            <option>5</option>
-            <option>10</option>
-          </select>
-        </label>
-      )}
-      <p className="hint">{HINTS[mode]}</p>
-      <textarea
-        aria-label="Your question, problem or topic"
-        rows={4}
-        maxLength={2000}
-        value={message}
-        onChange={(e) => setMessage(e.target.value)}
-      />
-      <button disabled={loading || !message.trim()} onClick={() => run(message, mode, marks)}>
-        {loading ? "Thinking…" : "Generate"}
-      </button>
 
-      {error && <p className="bad" role="alert">{error}</p>}
+      <div className="study-panel">
+        <div className="panel-heading">
+          <div>
+            <span className="section-label">STEP 01</span>
+            <h3>Choose your study mode</h3>
+          </div>
+          <span className="mode-count">05 MODES</span>
+        </div>
+
+        <div className="mode-grid" role="radiogroup" aria-label="What do you want to do?">
+          {MODES.map(([value, label]) => {
+            const detail = MODE_DETAILS[value];
+
+            return (
+              <label
+                key={value}
+                className={`mode-card ${mode === value ? "selected" : ""}`}
+              >
+                <input
+                  type="radio"
+                  name="mode"
+                  value={value}
+                  aria-label={label}
+                  checked={mode === value}
+                  onChange={() => setMode(value)}
+                />
+                <span className="mode-icon">{detail.icon}</span>
+                <span className="mode-name">{label}</span>
+                <span className="mode-description">{detail.subtitle}</span>
+                <span className="mode-check">
+                  {mode === value ? "✓" : "+"}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="study-panel composer-panel">
+        <div className="panel-heading">
+          <div>
+            <span className="section-label">STEP 02</span>
+            <h3>Enter your question or topic</h3>
+          </div>
+        </div>
+
+        <p className="composer-hint">{HINTS[mode]}</p>
+
+        {mode === "solve" && (
+          <label className="marks-field">
+            Answer length
+            <select
+              value={marks}
+              onChange={(e) => setMarks(e.target.value)}
+            >
+              <option value="">Not specified</option>
+              <option value="2">2 marks</option>
+              <option value="5">5 marks</option>
+              <option value="10">10 marks</option>
+            </select>
+          </label>
+        )}
+
+        <textarea
+          className="question-input"
+          aria-label="Your question, problem or topic"
+          placeholder="Type your question here... What would you like help with?"
+          rows={5}
+          maxLength={2000}
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+        />
+
+        <div className="composer-footer">
+          <span className="character-count">
+            {message.length}/2000 characters
+          </span>
+
+          <button
+            className="generate-button"
+            disabled={loading || !message.trim()}
+            onClick={() => run(message, mode, marks)}
+          >
+            {loading ? "Working on it..." : "Generate"}
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <p className="bad" role="alert">{error}</p>
+      )}
+
+      {loading && (
+        <div className="loading-panel" role="status">
+          <span className="loading-symbol">✦</span>
+          <div>
+            <strong>Your study assistant is working</strong>
+            <p>Finding relevant material and preparing your response...</p>
+          </div>
+        </div>
+      )}
 
       {result && (
         <div className="result">
+          <div className="result-heading">
+            <div>
+              <span className="section-label">YOUR STUDY RESULT</span>
+              <h3>Here's what I found</h3>
+            </div>
+            <span className="result-badge">AI RESPONSE</span>
+          </div>
+
           <p className="tool">
-            Tool: <strong>{result.tool}</strong> {result.reason && <span>– {result.reason}</span>}
+            Tool: <strong>{result.tool}</strong>{" "}
+            {result.reason && <span>– {result.reason}</span>}
           </p>
-          {result.fallback && <p className="warn">⚠️ {result.notice} The passages below come from your own material.</p>}
-          {!result.fallback && result.notice && <p className="warn">⚠️ {result.notice}</p>}
+
+          {result.fallback && (
+            <p className="warn">
+              {result.notice} The passages below come from your own material.
+            </p>
+          )}
+
+          {!result.fallback && result.notice && (
+            <p className="warn">{result.notice}</p>
+          )}
 
           {result.answer && (
             <div className="card answer">
@@ -149,58 +294,102 @@ export default function Study({ settings, filters, preset }) {
           )}
 
           {result.answer && (
-            <p>
+            <div className="result-actions">
               {extras.feedback ? (
-                "Thanks for your feedback!"
+                <span className="good">Thanks for your feedback!</span>
               ) : (
                 <>
-                  <button className="small" aria-label="Helpful" onClick={() => sendFeedback("up")}>👍</button>{" "}
-                  <button className="small" aria-label="Not helpful" onClick={() => sendFeedback("down")}>👎</button>
+                  <button
+                    className="small secondary-button"
+                    aria-label="Helpful"
+                    onClick={() => sendFeedback("up")}
+                  >
+                    👍 Helpful
+                  </button>
+                  <button
+                    className="small secondary-button"
+                    aria-label="Not helpful"
+                    onClick={() => sendFeedback("down")}
+                  >
+                    👎 Not helpful
+                  </button>
                 </>
               )}
-            </p>
-          )}
 
-          {result.answer && (
-            <p>
-              <button className="small" onClick={() => downloadText("study_notes.md", buildExport(result, extras))}>
-                ⬇️ Download as Markdown
+              <button
+                className="small secondary-button"
+                onClick={() =>
+                  downloadText(
+                    "study_notes.md",
+                    buildExport(result, extras)
+                  )
+                }
+              >
+                Download as Markdown
               </button>
-            </p>
+            </div>
           )}
 
           {isLesson && result.mode === "learn" && (
-            <p>
-              {!extras.answers && <button onClick={showAnswers}>Show answers to the practice questions</button>}{" "}
-              {!quiz && <button onClick={startQuiz}>Start a 3-question quiz</button>}
-            </p>
+            <div className="study-panel next-actions">
+              <h3>Continue learning</h3>
+              {!extras.answers && (
+                <button onClick={showAnswers}>
+                  Show answers to the practice questions
+                </button>
+              )}
+              {!quiz && (
+                <button onClick={startQuiz}>
+                  Start a 3-question quiz
+                </button>
+              )}
+            </div>
           )}
 
           {extras.answers && (
             <div className="card answer">
-              <h3>✅ Practice answers</h3>
+              <h3>Practice answers</h3>
               <ReactMarkdown>{extras.answers}</ReactMarkdown>
             </div>
           )}
-          {quiz && <Quiz questions={quiz} onFinished={saveQuizScore} />}
-          {extras.saved && <p className="good">Saved to your progress under {extras.saved}.</p>}
 
-          {result.mode !== "past" && result.related?.length > 0 && (
-            <div className="card">
-              <h3>📝 Related past questions</h3>
-              {result.related.map((q, i) => (
-                <details key={i}>
-                  <summary>{q.label}</summary>
-                  <p>{q.text}</p>
-                  <button className="small" onClick={() => { setMode("solve"); setMessage(q.text); run(q.text, "solve", ["2", "5", "10"].includes(String(q.marks)) ? String(q.marks) : ""); }}>
-                    Solve this question
-                  </button>
-                </details>
-              ))}
-            </div>
+          {quiz && (
+            <Quiz questions={quiz} onFinished={saveQuizScore} />
           )}
-          {result.mode === "past" && <Sources sources={result.sources} title="📝 Past questions" />}
-          {result.mode !== "past" && <Sources sources={result.sources} />}
+
+          {extras.saved && (
+            <p className="good">
+              Saved to your progress under {extras.saved}.
+            </p>
+          )}
+
+         {result.mode !== "past" && result.related?.length > 0 && (
+  <div className="card">
+    <h3>Related questions</h3>
+    {result.related.map((item, index) => (
+      <div className="related-question" key={index}>
+        <p>{typeof item === "string" ? item : item.label}</p>
+        {typeof item === "object" && (
+          <button
+            type="button"
+            onClick={() => {
+              setMessage(item.text);
+              setMode("solve");
+              setMarks(String(item.marks ?? ""));
+              run(item.text, "solve", String(item.marks ?? ""));
+            }}
+          >
+            Solve this question
+          </button>
+        )}
+      </div>
+    ))}
+  </div>
+)}
+          {result.mode !== "past" && (
+            <Sources sources={result.sources} />
+          )}
+
           <Steps steps={result.steps} />
         </div>
       )}
