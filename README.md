@@ -1,3 +1,11 @@
+---
+title: Academic Subject Guide AI
+emoji: 📚
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+---
 # Subject Guide & Question Bank AI Agent
 
 An AI study assistant for students. It reads your course material (PDF, DOCX, PPTX), then explains topics, answers questions, solves problems, and quizzes you, using only that material, with the source of every answer cited.
