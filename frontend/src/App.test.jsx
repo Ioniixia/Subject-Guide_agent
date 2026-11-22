@@ -216,5 +216,12 @@ describe("other pages", () => {
     vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new TypeError("Failed to fetch"))));
     render(<App />);
     expect(await screen.findByText(/Server not reachable/)).toBeInTheDocument();
+    expect(screen.getByText(/allows this website \(CORS\)/)).toBeInTheDocument();
+  });
+
+  it("says when the server is running but has no /health endpoint", async () => {
+    mockApi({ "GET /health": () => json(404, { detail: "Not Found" }) });
+    render(<App />);
+    expect(await screen.findByText(/no \/health endpoint/)).toBeInTheDocument();
   });
 });

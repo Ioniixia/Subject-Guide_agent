@@ -3,7 +3,7 @@ import { api, saveSettings } from "../api";
 
 const SOURCE_TYPES = ["notes", "textbook", "question_paper", "lab_manual"];
 
-export default function Sidebar({ settings, onSettings, filters, onFilters, options, serverStatus, onUploaded }) {
+export default function Sidebar({ settings, onSettings, filters, onFilters, options, serverStatus, serverError, onUploaded }) {
   const [files, setFiles] = useState([]);
   const [tags, setTags] = useState({ sourceType: "notes", subject: "", chapter: "" });
   const [upload, setUpload] = useState({ busy: false, message: "", error: false });
@@ -38,6 +38,7 @@ export default function Sidebar({ settings, onSettings, filters, onFilters, opti
       <p className={`status ${serverStatus}`}>
         {serverStatus === "ok" ? "● Server connected" : serverStatus === "checking" ? "● Checking server…" : "● Server not reachable"}
       </p>
+      {serverStatus === "down" && serverError && <p className="bad" role="status">{serverError}</p>}
 
       <details>
         <summary>⚙️ Settings</summary>

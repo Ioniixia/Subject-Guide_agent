@@ -15,14 +15,23 @@ export default function App() {
   const [filters, setFilters] = useState({ subject: "", chapter: "", sourceTypes: [] });
   const [options, setOptions] = useState({ subjects: [], chapters: [], sourceTypes: [] });
   const [serverStatus, setServerStatus] = useState("checking");
+  const [serverError, setServerError] = useState("");
   const [preset, setPreset] = useState(null);
 
   const refresh = useCallback(async () => {
     try {
       await api.health();
       setServerStatus("ok");
-    } catch {
+      setServerError("");
+    } catch (e) {
       setServerStatus("down");
+      setServerError(
+        e.status === 404
+          ? "The server is running, but it has no /health endpoint."
+          : e.status
+            ? `The server answered with an error: ${e.message}`
+            : e.message
+      );
       return;
     }
     try {
@@ -60,6 +69,7 @@ export default function App() {
         onFilters={setFilters}
         options={options}
         serverStatus={serverStatus}
+        serverError={serverError}
         onUploaded={refresh}
       />
       <main>
