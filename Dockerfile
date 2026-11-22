@@ -18,7 +18,8 @@ WORKDIR /home/user/app
 # CPU-only PyTorch: the default wheel is several GB larger and a free host has no GPU
 RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt python-multipart
+RUN pip install --no-cache-dir -r requirements.txt python-multipart \
+    && pip uninstall -y torchvision
 
 # Download the embedding model once, at build time, so the first request is not slow
 ENV HF_HOME=/opt/hf-cache
