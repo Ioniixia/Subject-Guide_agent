@@ -9,71 +9,142 @@ app_port: 7860
 
 # Subject Guide & Question Bank AI Agent
 
-An AI study assistant for students. It reads course material (PDF, DOCX, PPTX), explains topics, answers questions, solves problems, and generates quizzes using the provided material, with source references.
+An AI-powered study assistant that helps students understand academic subjects, solve questions step by step, practise with quizzes, and track their learning progress using their own study materials.
 
-## Live demos
+The system uses Retrieval-Augmented Generation (RAG) and a multi-agent workflow to provide context-aware answers with source references.
 
-- **Track A – Streamlit:** https://subject-guideagent-nvmsyd5d2gmqcemdjpjhgz.streamlit.app/
-- **Track B – React + FastAPI:** https://subject-guide-agent.onrender.com
+## Live Demos
 
-Both deployments are maintained separately.
-
-## Problem statement
-
-Students keep their course material in many places: lecture slides, textbook chapters, lab manuals, and past question papers. When they revise, they cannot quickly get an explanation of one topic based on their own material, linked to exam questions and clear about its sources.
-
-## Target users
-
-Undergraduate students preparing for semester exams (built and tested with AIML course material), and anyone who wants to study from their own files.
-
-## Success criteria
-
-- Every answer shows the file and slide or page it came from.
-- Answers use the provided material and indicate when it does not cover a question.
-- Syllabus topics have study material and past questions tracked by the coverage report.
-- The app runs at public links and works with students' uploaded files.
-
-## Team and responsibilities
-
-| Member | Role |
-|---|---|
-| Ioniixia | Data and retrieval: document loading, chunking, metadata tagging, FAISS index, syllabus and question tagging, coverage report, deployment, README |
-| Yitong | Agent and app: agent steps, Gemini answer generation, study modes, quiz, related past questions, filters, Streamlit interface |
-
-## Project plan
-
-| Week | Deliverable | Status |
+| Version | Technology | Live Application |
 |---|---|---|
-| 1 | Repository, README, problem statement, document loading, chunking, FAISS index | Done |
-| 2 | Multi-format ingestion, source tagging, RAG pipeline, Streamlit app | Done |
-| 3 | Study modes, subject and chapter filters, AIML notes indexed | Done |
-| 4 | Question bank, quiz, related past questions, public deployment | Done |
-| 5 | Agent pipeline, syllabus, topic tags, coverage report | Done |
-| 6 | Practice mode, progress tracking, weak-area detection, study plan, backend API | Implemented |
-| 7 | React frontend, guardrails, edge-case testing | Implemented |
-| 8 | Docker deployment, public deployment, README updates | Deployment done; documentation ongoing |
+| Track A | Streamlit | [Open Streamlit App](https://subject-guideagent-nvmsyd5d2gmqcemdjpjhgz.streamlit.app/) |
+| Track B | React + FastAPI | [Open React App](https://subject-guide-agent.onrender.com) |
+
+**Track A** is the original Streamlit application.
+
+**Track B** is the redesigned React frontend connected to a FastAPI backend and deployed using Docker.
+
+Both versions are maintained separately. The original Streamlit application remains available.
+
+---
+
+## Problem Statement
+
+Students often have difficulty understanding academic topics, finding relevant questions, and preparing effectively for examinations.
+
+Study materials may be spread across PDFs, presentations, and documents, making it difficult to locate the right information quickly.
+
+This project aims to provide a single AI-powered study environment that can use course materials to explain concepts, answer questions, generate quizzes, and support exam preparation.
+
+## Target Users
+
+- College and university students
+- Students preparing for examinations
+- Learners who want explanations based on their own study materials
+- Students who need additional practice and revision support
+
+## Key Objectives
+
+- Provide answers grounded in uploaded academic materials.
+- Explain difficult topics in a student-friendly way.
+- Solve academic questions step by step.
+- Generate multiple-choice quizzes.
+- Retrieve relevant questions from indexed materials.
+- Track study activity and identify areas that need revision.
+- Provide source references to support generated answers.
+
+---
+
+## Team and Responsibilities
+
+| Team Member | Contribution |
+|---|---|
+| Ioniixia | Project development, AI integration, application implementation and deployment |
+| yitong2907 | Project collaboration and development |
+
+---
+
+## Project Development Progress
+
+| Week | Planned Work | Status |
+|---|---|---|
+| Week 1 | Repository setup, project documentation, document loading, chunking and FAISS indexing | Completed |
+| Week 2 | Multi-format document ingestion, source tagging, RAG pipeline and Streamlit interface | Completed |
+| Week 3 | Study modes, subject and chapter filters, and AIML study material indexing | Completed |
+| Week 4 | Question bank, quiz generation, related questions and public deployment | Completed |
+| Week 5 | Agent workflow, syllabus and topic tagging, and coverage reporting | Implemented |
+| Week 6 | Practice features, progress tracking, weak-area detection, study planning and backend API | Implemented |
+| Week 7 | React frontend, guardrails and edge-case testing | Implemented |
+| Week 8 | Docker deployment, public deployment and documentation updates | Deployment completed; documentation updated |
+
+---
 
 ## Features
 
-- **Agent mode:** Questions go through Router, Retriever, Tutor, and Reviewer steps.
-- **Study modes:** Ask a question, solve a problem step by step, or learn a topic.
-- **Test yourself:** Generate multiple-choice quizzes.
-- **Related past questions:** Find matching exam questions.
-- **Filters:** Subject, chapter, and source type.
-- **Marks field:** Adjust answer length for 2, 5, or 10 mark questions.
-- **Source citations:** Show file, chapter, slide, or page references.
-- **Multi-file upload:** Upload PDF, DOCX, and PPTX files.
-- **Progress tracking:** Track learning and practice progress.
-- **Study plan:** Organize revision with a study plan.
-- **Coverage report:** Identify syllabus topics with missing study material or questions.
+### 1. AI Agent Workflow
 
-## Track A – Streamlit
+The application uses a multi-stage workflow:
 
-Track A is the original Streamlit implementation.
+- **Router:** Identifies the type of student request.
+- **Retriever:** Searches indexed study materials for relevant information.
+- **Tutor:** Generates explanations and answers using retrieved context.
+- **Reviewer:** Reviews the generated response before it is presented.
 
-**Deployment:** https://subject-guideagent-nvmsyd5d2gmqcemdjpjhgz.streamlit.app/
+### 2. Study Modes
 
-Technology:
+Students can use different modes depending on what they need:
+
+- Ask a question.
+- Solve a problem step by step.
+- Learn a topic.
+
+### 3. Quiz Generation
+
+- Generates multiple-choice questions.
+- Provides answer options.
+- Supports revision and self-assessment using indexed material.
+
+### 4. Related Questions
+
+Retrieves related questions from the available question bank and study materials to support further practice.
+
+### 5. Subject and Chapter Filtering
+
+Students can narrow their study content using available subject, chapter and source-type filters.
+
+### 6. Marks-Based Answers
+
+Students can specify the expected marks, such as 2, 5 or 10, to guide the expected answer depth.
+
+### 7. Source References
+
+Responses can include references to the retrieved source material, including document and page information when available.
+
+### 8. Document Upload
+
+Supports academic materials in:
+
+- PDF
+- DOCX
+- PPTX
+
+### 9. Learning Progress
+
+Includes study progress features and weak-area identification to help students decide what to revise.
+
+### 10. Study Planning and Coverage
+
+Includes study planning and syllabus coverage features to support structured preparation.
+
+---
+
+## Application Versions
+
+### Track A — Streamlit
+
+The original application provides a Streamlit-based interface for interacting with the AI study assistant.
+
+**Technology stack:**
 - Python
 - Streamlit
 - LangChain
@@ -81,104 +152,207 @@ Technology:
 - Sentence-Transformers
 - Google Gemini
 
-## Track B – React + FastAPI
+Live application: [Subject Guide Agent — Streamlit](https://subject-guideagent-nvmsyd5d2gmqcemdjpjhgz.streamlit.app/)
 
-Track B is the newer web application, with a React frontend and FastAPI backend served from a single Docker container.
+### Track B — React + FastAPI
 
-**Deployment:** https://subject-guide-agent.onrender.com
+The second version introduces a redesigned React frontend and a FastAPI backend.
 
-Technology:
+**Frontend:**
 - React
 - Vite
+- React Markdown
+
+**Backend and AI:**
 - Python
 - FastAPI
 - Uvicorn
-- Docker
 - FAISS
 - Sentence-Transformers
 - Google Gemini
 
-The deployed application uses the `all-MiniLM-L6-v2` embedding model and supports document retrieval from uploaded study material.
+**Deployment:**
+- Docker
+- Render
+- Hugging Face Spaces-compatible Docker configuration
 
-The Track B deployment was tested successfully for:
-- Application startup and public access.
+The frontend includes a workspace layout, navigation tabs, selectable study modes, a question composer, result sections, and study actions.
+
+Live application: [Subject Guide Agent — React](https://subject-guide-agent.onrender.com)
+
+### Track B Verification
+
+The deployed application was tested for:
+
+- Backend startup and public accessibility.
+- Frontend and backend connectivity.
 - PDF upload.
-- Retrieval of relevant PDF content.
-- Question answering and MCQ generation.
+- Retrieval from uploaded study material.
+- Question answering using uploaded content.
+- MCQ quiz generation.
+- Source references in generated responses.
 
-## Architecture
+---
+
+## System Architecture
+
+### Agent Workflow
 
 ```mermaid
 flowchart TD
-    Q[Student question] --> RT[Router agent]
-    RT --> RE[Retriever agent]
-    RE --> TU[Tutor agent]
-    TU --> RV[Reviewer agent]
-    RV --> OUT[Answer with citations, quiz, related questions]
-    RT -. timing .-> LOG[Agent steps panel]
-    RE -. timing .-> LOG
-    TU -. timing .-> LOG
-    RV -. timing .-> LOG
+    A[Student Question] --> B[Router Agent]
+    B --> C[Retriever Agent]
+    C --> D[FAISS Search]
+    D --> E[Tutor Agent]
+    E --> F[Reviewer Agent]
+    F --> G[Final Response]
+    G --> H[Answer with Sources]
+    G --> I[Quiz or Related Questions]
+    G --> J[Agent Steps]
 ```
 
-## Tools
+### Application Architecture
 
-| Tool | What it does | Status |
-|---|---|---|
-| Answer a question | Short answer from notes, with citations | Integrated |
-| Teach a topic | Lesson with theory, examples, and practice | Integrated |
-| Solve a problem | Step-by-step solution | Integrated |
-| Quiz | Three-question quiz on a topic | Integrated |
-| Past questions | Related exam questions | Integrated |
-| Practice | Practice questions and exercises | Implemented |
-| Progress tracking | Track quiz and practice progress | Implemented |
-| Weak-area detection | Identify topics to revise | Implemented |
-| Study plan | Organize revision | Implemented |
-| Coverage report | Identify topics with missing notes or questions | Built |
+```mermaid
+flowchart TD
+    A[Student] --> B[React Frontend]
+    B --> C[FastAPI Backend]
+    C --> D[Agent Workflow]
+    D --> E[Retriever]
+    E --> F[FAISS Index]
+    D --> G[Google Gemini]
+    G --> H[Generated Response]
+    F --> H
+    H --> C
+    C --> B
+```
 
-## System design
+The application processes academic materials, creates searchable document representations, retrieves relevant content, and uses the language model to generate context-aware responses.
 
-- **Ingestion:** PDF, DOCX, and PPTX files are loaded by type. Slides are read one at a time, and question papers are split so each question is its own chunk.
-- **Metadata:** Every chunk carries source type, subject, chapter, topic, and slide or page information.
-- **Embeddings and search:** Chunks are embedded with `all-MiniLM-L6-v2` and searched using FAISS.
-- **Generation:** Gemini generates answers from retrieved content in the selected study mode, with inline citations.
-- **Storage:** The built-in index is saved in `faiss_index/`. Syllabus and tags are stored as JSON files in `data/`.
-- **Deployment:** Track A uses Streamlit Cloud. Track B uses Render with Docker.
+---
 
-## LLM and embedding choices
+## Available Study Tools
 
-We compared the four models our agent can use. Each one answered the same five questions from AIML notes, using the same prompt and the top three retrieved note chunks.
+| Tool | Purpose |
+|---|---|
+| Ask Question | Answer questions using indexed study materials |
+| Learn Topic | Explain academic concepts |
+| Solve Problem | Provide step-by-step problem-solving support |
+| Generate Quiz | Create multiple-choice questions |
+| Related Questions | Retrieve related questions for practice |
+| Practice | Support additional study practice |
+| Progress Tracking | Monitor learning activity |
+| Weak-Area Detection | Identify topics that may need revision |
+| Study Plan | Support structured revision |
+| Coverage Report | Review syllabus and topic coverage |
 
-| Model | Avg response time | Keyword accuracy | Answers with citations | Errors |
-|---|---|---|---|---|
-| gemini-2.5-flash-lite | Not available (404) | - | - | 5 of 5 |
-| gemini-3.1-flash-lite | 1.5 s | 93% | 5 of 5 | 0 |
-| gemini-flash-latest | 100.3 s | 100% | 3 of 3 | 2 (503) |
-| gemini-3.5-flash | 4.4 s | 83% | 4 of 4 | 1 (503) |
+---
 
-**Choice:** `gemini-3.1-flash-lite` is the main model because it was fast, had no errors, and cited its sources consistently in the test.
+## Technical Implementation
 
-**Embeddings:** `all-MiniLM-L6-v2` from Sentence-Transformers. It is free, runs locally, and is suitable for the project's index.
+### 1. Document Ingestion
 
-## Error handling and logging
+The application supports loading academic documents in PDF, DOCX and PPTX formats.
 
-- If Gemini is unavailable, the request is retried and the next model in the list is tried.
-- Empty questions are rejected with a message.
-- Each agent step records its execution time.
+### 2. Text Chunking
 
-## Run locally
+Documents are divided into smaller chunks to support efficient retrieval.
 
-Clone the repository:
+### 3. Metadata and Source Tagging
+
+Document chunks can be associated with metadata such as subject, chapter, source and page information.
+
+### 4. Embeddings and Vector Search
+
+Sentence-Transformers generates vector embeddings for document chunks.
+
+FAISS is used to store and search the indexed vectors.
+
+### 5. Retrieval-Augmented Generation
+
+Relevant chunks are retrieved based on the student's question and passed to the language model as context.
+
+### 6. Response Generation
+
+Google Gemini generates explanations, answers and study content using the retrieved information.
+
+### 7. Review and Response
+
+The reviewer stage checks the generated response before it is returned to the student.
+
+---
+
+## Model Evaluation
+
+Different Gemini models were evaluated to compare response speed, answer quality, citation coverage and reliability.
+
+| Model | Response Time | Evaluation Score | Citation Result | Errors |
+|---|---:|---:|---:|---:|
+| gemini-2.5-flash-lite | Unavailable | N/A | N/A | 5/5 |
+| gemini-3.1-flash-lite | 1.5 s | 93% | 5/5 | 0 |
+| gemini-flash-latest | 100.3 s | 100% | 3/3 | 2 (503) |
+| gemini-3.5-flash | 4.4 s | 83% | 4/4 | 1 (503) |
+
+**Selected model:** `gemini-3.1-flash-lite`
+
+It was selected based on the evaluation results, balancing response speed, answer quality, citation coverage and reliability.
+
+### Embedding Model
+
+`sentence-transformers/all-MiniLM-L6-v2`
+
+This model is used to generate embeddings for semantic document retrieval.
+
+*Note: Evaluation figures represent the recorded project tests and may vary with subsequent model or API changes.*
+
+---
+
+## Error Handling and Logging
+
+The application includes:
+
+- Validation for empty questions.
+- Retry and fallback handling for model errors.
+- Alternative model selection when a model request fails.
+- Agent-step tracking and timing information.
+- Error handling for application requests.
+
+---
+
+## Run Locally
+
+### Prerequisites
+
+- Python
+- Node.js and npm
+- Git
+- A Google Gemini API key
+
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/Ioniixia/Subject-Guide_agent.git
 cd Subject-Guide_agent
 ```
 
-Install backend dependencies:
+### 2. Set up the Python backend
+
+Create a virtual environment:
 
 ```bash
-pip install -r requirements.txt
+python -m venv venv
+```
+
+Activate it on Windows:
+
+```powershell
+.\venv\Scripts\Activate.ps1
+```
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt python-multipart
 ```
 
 Create a `.env` file in the project root:
@@ -187,37 +361,165 @@ Create a `.env` file in the project root:
 GEMINI_API_KEY=your_key_here
 ```
 
-For Track A:
+Replace `your_key_here` with your own API key.
+
+Do not commit your `.env` file or expose your API key publicly.
+
+### 3. Start the FastAPI backend
+
+From the project root:
+
+```bash
+python -m uvicorn main:app --app-dir app --reload --host 127.0.0.1 --port 7860
+```
+
+The backend will be available at:
+
+`http://127.0.0.1:7860`
+
+### 4. Start the React frontend
+
+Open a second terminal:
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+Vite will display the frontend address in the terminal.
+
+Open that address in your browser.
+
+In the application's Settings, set the backend server address to:
+
+`http://127.0.0.1:7860`
+
+### 5. Run the original Streamlit application
+
+From the project root, activate the Python environment if necessary and run:
 
 ```bash
 python -m streamlit run app/streamlit_app.py
 ```
 
-For Track B, install frontend dependencies and run the frontend and backend using the project's development setup.
+### 6. Run frontend tests
 
-## Using your own notes
+From the `frontend` directory:
 
-The sample question papers, textbook chapter, and lab manual in `data/` are examples written for this project, not real exam papers.
-
-To build the index from your own files:
-
-1. Put your PDF, DOCX, or PPTX files in `data/`.
-2. Edit the `file_configs` list in `src/build_index.py` with each file's path, source type, subject, and chapter.
-3. List units and topics in `data/syllabus.json`.
-4. Tag questions and slides in the relevant JSON files.
-5. Run `python src/build_index.py`.
-6. Run `python src/coverage_check.py` to check for missing topics.
-
-## Project structure
-
-```text
-app/           Streamlit app, FastAPI backend, agents and study features
-frontend/      React and Vite frontend
-src/           Document loading, chunking, tagging and indexing
-data/          Sample study material, syllabus and topic tags
-faiss_index/   Saved built-in index
+```bash
+npm test
 ```
 
-## Team
+### 7. Build the frontend
 
-Ioniixia and yitong2907
+From the `frontend` directory:
+
+```bash
+npm run build
+```
+
+The production frontend files are generated in:
+
+`frontend/dist`
+
+---
+
+## Docker Deployment
+
+Track B uses a multi-stage Docker build.
+
+The first stage installs frontend dependencies and builds the React application.
+
+The second stage installs Python dependencies, prepares the embedding model cache, copies the backend and serves the built frontend through FastAPI.
+
+Build the Docker image:
+
+```bash
+docker build -t subject-guide-agent .
+```
+
+Run the container:
+
+```bash
+docker run -p 7860:7860 --env-file .env subject-guide-agent
+```
+
+The application will be available at:
+
+`http://localhost:7860`
+
+The container uses Uvicorn to serve the application on port `7860`.
+
+---
+
+## Using Your Own Study Materials
+
+The project can be adapted to different academic subjects by using your own study materials and updating the associated metadata.
+
+The main areas to review are:
+
+- `data/` — study materials and supporting data.
+- `src/build_index.py` — document indexing logic.
+- `data/syllabus.json` — syllabus information.
+- Topic and question metadata — used for subject, chapter and topic organization.
+
+After changing the materials or metadata, rebuild the relevant index and update the coverage information using the project's indexing and coverage scripts.
+
+---
+
+## Project Structure
+
+```text
+Subject-Guide_agent/
+│
+├── app/
+│   ├── streamlit_app.py
+│   └── main.py
+│
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   ├── pages/
+│   │   ├── App.jsx
+│   │   └── styles.css
+│   ├── package.json
+│   └── vite.config.js
+│
+├── src/
+│   ├── build_index.py
+│   └── document processing and indexing modules
+│
+├── data/
+│   ├── study materials
+│   ├── syllabus.json
+│   └── topic and question metadata
+│
+├── faiss_index/
+│
+├── requirements.txt
+├── Dockerfile
+├── README.md
+└── .env
+```
+
+---
+
+## Future Improvements
+
+Potential future enhancements include:
+
+- More advanced personalized learning recommendations.
+- Expanded question-bank support.
+- Additional document formats.
+- More detailed learning analytics.
+- Improved syllabus coverage visualization.
+- Further testing across different academic subjects.
+
+---
+
+## Acknowledgements
+
+This project was developed as an academic AI application focused on improving the student learning and examination preparation experience through document retrieval, language models and an agent-based workflow.
+
+**Repository:** [Subject-Guide_agent on GitHub](https://github.com/Ioniixia/Subject-Guide_agent)
