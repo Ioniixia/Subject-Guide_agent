@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { api, saveSettings } from "./api";
+import { api, defaultBaseUrl, saveSettings } from "./api";
 import { json, mockApi } from "./testUtils";
 
 beforeEach(() => {
@@ -51,5 +51,12 @@ describe("api client", () => {
     expect(body.get("source_type")).toBe("notes");
     expect(body.get("subject")).toBe("AIML");
     expect(body.has("chapter")).toBe(false);
+  });
+
+  it("uses the local backend while developing and the same address once deployed", () => {
+    expect(defaultBaseUrl({ port: "5173", origin: "http://localhost:5173" }, {})).toBe("http://127.0.0.1:8000");
+    expect(defaultBaseUrl({ port: "", origin: "https://guide.hf.space" }, {})).toBe("https://guide.hf.space");
+    expect(defaultBaseUrl({ port: "8000", origin: "http://127.0.0.1:8000" }, {})).toBe("http://127.0.0.1:8000");
+    expect(defaultBaseUrl({ port: "", origin: "https://guide.hf.space" }, { VITE_API_URL: "https://api.example.com" })).toBe("https://api.example.com");
   });
 });

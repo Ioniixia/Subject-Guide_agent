@@ -1,7 +1,14 @@
 // Every call to the backend goes through this file.
-const DEFAULT_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 const KEY_HEADER = import.meta.env.VITE_API_KEY_HEADER || "X-API-Key";
 const STORAGE_KEY = "study-guide-settings";
+
+// Where the backend is. On a deployed site the backend serves this page, so it is the same address.
+// While developing (the Vite dev server on port 5173) it is the local backend. VITE_API_URL overrides both.
+export function defaultBaseUrl(location = window.location, env = import.meta.env) {
+  if (env.VITE_API_URL) return env.VITE_API_URL;
+  if (["5173", "4173"].includes(location.port)) return "http://127.0.0.1:8000";
+  return location.origin;
+}
 
 export function getSettings() {
   let saved = {};
@@ -10,7 +17,7 @@ export function getSettings() {
   } catch {
     saved = {};
   }
-  return { baseUrl: DEFAULT_URL, apiKey: "", user: "guest", ...saved };
+  return { baseUrl: defaultBaseUrl(), apiKey: "", user: "guest", ...saved };
 }
 
 export function saveSettings(settings) {
@@ -58,7 +65,7 @@ async function request(path, { method = "GET", body, form, query } = {}) {
   try {
     response = await fetch(url.toString(), { method, headers, body: payload });
   } catch {
-    throw new ApiError(0, "Cannot reach the server. Check that the backend is running and the address in Settings is right.");
+    throw new ApiError(0, "Cannot reach the server. Check that the backend is running, that the address in Settings is right, and that the backend allows this website (CORS).");
   }
   const data = await response.json().catch(() => null);
   if (!response.ok) throw new ApiError(response.status, explain(response.status, detailText(data)));
